@@ -1,14 +1,13 @@
-#include <stdio.h>
+﻿#include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "esp_system.h"
-#include "esp_spi_flash.h"
 #include "esp_log.h"
-#include "esp_event.h"
-#include "esp_netif.h"
-#include "esp_wifi.h"
+#include "servo.h"               /* components/servo 自动被 IDF 发现 */
+
+static const char *TAG = "main";
 
 void app_main(void)
 {
-
+    
+    
 }
