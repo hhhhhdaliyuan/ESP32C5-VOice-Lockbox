@@ -1,0 +1,16 @@
+build/
+sdkconfig
+sdkconfig.old
+
+*.temp
+*.log
+
+.vscode/
+
+.claude/
+.agents/
+.codex/
+.reasonix/
+.idea/
+
+superpowers/
