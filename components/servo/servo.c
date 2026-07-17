@@ -133,31 +133,6 @@ void servo_open(int step_delay_ms) //open the box
     s_state = SERVO_STATE_OPENED;
     ESP_LOGI(TAG, "opened");
 }
-{
-    if (!s_initialized) {
-        ESP_LOGE(TAG, "servo not initialized");
-        return;
-    }
-    if (step_delay_ms <= 0) step_delay_ms = 20;
-
-    /* 已经打开则跳过 */
-    if (s_state == SERVO_STATE_OPENED) {
-        ESP_LOGW(TAG, "already opened, skip");
-        return;
-    }
-
-    ESP_LOGI(TAG, "opening ...");
-
-    /* 从当前角度步进到 150° */
-    for (int angle = s_current_angle; angle <= 90; angle++) {
-        servo_set_angle(angle);
-        vTaskDelay(pdMS_TO_TICKS(step_delay_ms));
-    }
-
-    s_current_angle = 150;
-    s_state = SERVO_STATE_OPENED;
-    ESP_LOGI(TAG, "opened");
-}
 
 void servo_close(int step_delay_ms)  //back to 0°
 {
