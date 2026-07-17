@@ -3,6 +3,7 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "servo.h"
+#include "driver/ledc.h"
 
 #define SERVO_GPIO  6       /* MG90S 信号线接 GPIO6 */
 

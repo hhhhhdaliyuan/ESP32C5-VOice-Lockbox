@@ -124,12 +124,12 @@ void servo_open(int step_delay_ms) //open the box
     ESP_LOGI(TAG, "opening ...");
 
     /* 从当前角度步进到 90° */
-    for (int angle = s_current_angle; angle <= 90; angle++) {
+    for (int angle = s_current_angle; angle <= 150; angle++) {
         servo_set_angle(angle);
         vTaskDelay(pdMS_TO_TICKS(step_delay_ms));
     }
 
-    s_current_angle = 90;
+    s_current_angle = 150;
     s_state = SERVO_STATE_OPENED;
     ESP_LOGI(TAG, "opened");
 }
@@ -148,13 +148,13 @@ void servo_open(int step_delay_ms) //open the box
 
     ESP_LOGI(TAG, "opening ...");
 
-    /* 从当前角度步进到 90° */
+    /* 从当前角度步进到 150° */
     for (int angle = s_current_angle; angle <= 90; angle++) {
         servo_set_angle(angle);
         vTaskDelay(pdMS_TO_TICKS(step_delay_ms));
     }
 
-    s_current_angle = 90;
+    s_current_angle = 150;
     s_state = SERVO_STATE_OPENED;
     ESP_LOGI(TAG, "opened");
 }
