@@ -23,7 +23,7 @@ extern "C" {
 /** 舵机状态：闭合 / 开启 */
 typedef enum {
     SERVO_STATE_CLOSED = 0,  /**< 盒子闭合（0°） */
-    SERVO_STATE_OPENED = 1,  /**< 盒子打开（90°） */
+    SERVO_STATE_OPENED = 1,  /**< 盒子打开（150°） */
 } servo_state_t;
 
 /**
@@ -50,10 +50,10 @@ esp_err_t servo_init(int gpio_pin, int min_pulse_us, int max_pulse_us);
 void servo_set_angle(int angle);
 
 /**
- * @brief 慢速开盒 — 从当前角度旋转到 90°
+ * @brief 慢速开盒 — 从当前角度旋转到 150°
  *
  * 每 1° 步进一次，步进间延迟 step_delay_ms 毫秒，延迟越大旋转越慢。
- * 建议值：15~30 ms，对应 90° 旋转耗时约 1.35~2.7 秒。
+ * 建议值：15~30 ms，对应 150° 旋转耗时约 1.35~2.7 秒。
  *
  * @param step_delay_ms  每度步进延迟（毫秒），必须 > 0
  */
