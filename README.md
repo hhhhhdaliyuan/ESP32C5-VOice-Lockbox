@@ -6,7 +6,7 @@
 
 ## 当前固件状态
 
-`app_main()` 当前只负责初始化 SG90 舵机、ES8311 Codec 和 LED 控制器。关键词识别、PCM 采集、舵机开闭及 LED 状态联动尚未接入主程序。
+`app_main()` 当前负责初始化 SG90 舵机、ES8311 Codec、LED 控制器和 GC9A01 显示控制器。GC9A01 已完成上板验证，主程序仅执行控制器初始化，不绘制业务页面；关键词识别、PCM 采集、舵机开闭及 LED 状态联动尚未接入主程序。
 
 ## 第一阶段目标
 
@@ -63,12 +63,27 @@ ES8311 持续采集音频
 | 红色 LED | 正极（阳极） | **GPIO3** | GND |
 | 绿色 LED | 正极（阳极） | **GPIO16** | GND |
 | 黄色 LED | 正极（阳极） | **GPIO18** | GND |
+| GC9A01 | SCLK | **GPIO9** | LCD SCL |
+| GC9A01 | MOSI | **GPIO10** | LCD SDA |
+| GC9A01 | DC | **GPIO11** | LCD DC |
+| GC9A01 | CS | **GPIO12** | LCD CS |
+| GC9A01 | RST | **GPIO13** | LCD RST |
 
 - LED 为**高电平点亮**（GPIO 输出 1 → LED 亮）。
 - 所有 LED 共地，建议外接 100 Ω 限流电阻。
 - SG90 必须使用独立 5 V 电源，且电源负极必须与 ESP32-S3 GND 共地。
+- GC9A01 使用 SPI2、Mode 0、60 MHz；MISO 未使用。
+- GC9A01 的 CS 必须接入 GPIO12，才能与后续 SPI 设备共享 GPIO9（SCLK）和 GPIO10（MOSI）。
 - 未完成实物验证的引脚，不写入本 README。
 - 完成接线、构建和烧录验证后，应在同一提交中更新 README。
+
+### GC9A01 显示验证
+
+GC9A01 控制器、通用 SPI 传输层、8x16 ASCII 字模及文字/数值/RGB565 绘图 API 已完成上板验证。验证画面确认了初始化、文字、十进制、十六进制、浮点和红绿蓝颜色显示均正常。
+
+SPI 传输由 `components/common_spi/` 管理：一条 SPI 总线可添加多个带独立 CS 的设备。GC9A01 使用 SPI2、GPIO9/10 和 CS=GPIO12；后续设备可复用 SCLK/MOSI，并使用各自的 CS、SPI Mode 和频率。
+
+屏幕为圆形，虽然控制器坐标为 240x240 矩形，但四角像素不可见。业务页面应将关键文字和控件布局在圆心附近，避免放置在顶部、底部或左右边缘。
 
 ## LED 灯光模式
 

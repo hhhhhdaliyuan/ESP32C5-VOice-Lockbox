@@ -1,3 +1,3 @@
 ﻿idf_component_register(SRCS "main.c"
                     INCLUDE_DIRS "."
-                    REQUIRES servo led_control es8311)
+                    REQUIRES servo led_control es8311 gc9a01)
