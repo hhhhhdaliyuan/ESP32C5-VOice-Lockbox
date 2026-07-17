@@ -107,7 +107,32 @@ void servo_set_angle(int angle)
     ESP_LOGD(TAG, "set angle=%d, duty=%lu", angle, (unsigned long)duty);
 }
 
-void servo_open(int step_delay_ms)
+void servo_open(int step_delay_ms) //open the box
+{
+    if (!s_initialized) {
+        ESP_LOGE(TAG, "servo not initialized");
+        return;
+    }
+    if (step_delay_ms <= 0) step_delay_ms = 20;
+
+    /* 已经打开则跳过 */
+    if (s_state == SERVO_STATE_OPENED) {
+        ESP_LOGW(TAG, "already opened, skip");
+        return;
+    }
+
+    ESP_LOGI(TAG, "opening ...");
+
+    /* 从当前角度步进到 90° */
+    for (int angle = s_current_angle; angle <= 90; angle++) {
+        servo_set_angle(angle);
+        vTaskDelay(pdMS_TO_TICKS(step_delay_ms));
+    }
+
+    s_current_angle = 90;
+    s_state = SERVO_STATE_OPENED;
+    ESP_LOGI(TAG, "opened");
+}
 {
     if (!s_initialized) {
         ESP_LOGE(TAG, "servo not initialized");
@@ -134,7 +159,7 @@ void servo_open(int step_delay_ms)
     ESP_LOGI(TAG, "opened");
 }
 
-void servo_close(int step_delay_ms)
+void servo_close(int step_delay_ms)  //back to 0°
 {
     if (!s_initialized) {
         ESP_LOGE(TAG, "servo not initialized");
