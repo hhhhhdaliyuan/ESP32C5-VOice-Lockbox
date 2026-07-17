@@ -1,8 +1,8 @@
-# Chest
+﻿# Chest
 
 基于 ESP32-S3 的智能宝盒原型项目。
 
-当前目标是先完成“关键词识别并自动开盒、闭盒”的稳定闭环；后续逐步扩展声纹验证、局域网管理和物品收纳统计等功能。
+当前目标是先完成"关键词识别并自动开盒、闭盒"的稳定闭环；后续逐步扩展声纹验证、局域网管理和物品收纳统计等功能。
 
 ## 当前阶段
 
@@ -48,15 +48,93 @@ GC9A01 和 LED 用于显示当前业务状态。
 | 音频编解码器 | ES8311 | 音频采集与播放基础能力 |
 | 执行器 | SG90 舵机 | 宝盒开合功能验证 |
 | 显示屏 | GC9A01 | 显示业务状态 |
-| 状态提示 | LED | 显示业务状态 |
+| 状态提示 | 3 x LED（红、绿、黄） | 显示开盒/闭盒/解锁结果 |
 | 语音业务 | SonKey 当前 KWS 服务 | 识别关键词 |
 
 ### 硬件接线约定
 
-- GPIO 分配、供电连接和实际模块接线由对应硬件业务负责人确认后更新。
+| 设备 | 信号线 | GPIO | 另一端 |
+|------|--------|------|--------|
+| 舵机 MG90S | 信号线 | **GPIO6** | — |
+| 红色 LED | 正极（阳极） | **GPIO3** | GND |
+| 绿色 LED | 正极（阳极） | **GPIO16** | GND |
+| 黄色 LED | 正极（阳极） | **GPIO18** | GND |
+
+- LED 为**高电平点亮**（GPIO 输出 1 → LED 亮）。
+- 所有 LED 共地，建议外接 100 Ω 限流电阻。
+- SG90 必须使用独立 5 V 电源，且电源负极必须与 ESP32-S3 GND 共地。
 - 未完成实物验证的引脚，不写入本 README。
 - 完成接线、构建和烧录验证后，应在同一提交中更新 README。
-- SG90 必须使用独立 5 V 电源，且电源负极必须与 ESP32-S3 GND 共地。
+
+## LED 灯光模式
+
+三色 LED 用于直观反馈宝盒状态。底层由 `components/led_control/` 驱动，提供以下灯光模式：
+
+| 模式 | 枚举值 | 灯光效果 | 使用场景 |
+|------|--------|----------|----------|
+| 全部关闭 | `LED_PATTERN_OFF` | 全部熄灭 | 系统待机/休眠 |
+| 待机 | `LED_PATTERN_IDLE` | 绿灯常亮 | 系统就绪，等待指令 |
+| 解锁成功 | `LED_PATTERN_UNLOCK_SUCCESS` | 绿灯闪烁 3 次后常亮 | 声纹/关键词验证通过 |
+| 解锁失败 | `LED_PATTERN_UNLOCK_FAIL` | 红灯快速连续闪烁 | 声纹/关键词验证失败 |
+| 开盒过程 | `LED_PATTERN_OPENING` | 多色循环：红→绿→黄→红+绿→绿+黄→红+黄→全亮→全灭，循环步进 200 ms | 舵机开盒或闭盒过程中 |
+| 闭盒完毕 | `LED_PATTERN_CLOSED` | 绿+黄同时闪烁（400 ms 间隔） | 盒子完全闭合后 |
+
+### 与舵机的联动规则
+
+| 业务事件 | 调用顺序 | 说明 |
+|----------|----------|------|
+| 开盒 | `set_pattern(OPENING)` → `servo_open(20)` | 先开启多色循环，再启动舵机旋转 |
+| 闭盒 | `set_pattern(OPENING)` → `servo_close(20)` | 开盒和闭盒过程中复用同一多色循环 |
+| 闭盒完毕 | `set_pattern(CLOSED)` | 舵机到位后切换 |
+| 解锁成功 | `set_pattern(UNLOCK_SUCCESS)` | 可在开盒前驱动，也可在开盒后驱动 |
+| 解锁失败 | `set_pattern(UNLOCK_FAIL)` | 拒绝动作后保持 |
+| 空闲待机 | `set_pattern(IDLE)` | 无事件时默认状态 |
+
+### 函数 API 参考
+
+由 `components/led_control/` 提供，`main.c` 或其他业务模块调用：
+
+```c
+#include "led_control.h"
+
+/* 初始化（在 app_main 中调用一次） */
+led_control_init();
+
+/* 切换灯光模式 — 在业务事件发生时调用 */
+led_control_set_pattern(LED_PATTERN_IDLE);              // 待机
+led_control_set_pattern(LED_PATTERN_OPENING);            // 开盒/闭盒中
+led_control_set_pattern(LED_PATTERN_UNLOCK_SUCCESS);     // 解锁成功
+led_control_set_pattern(LED_PATTERN_UNLOCK_FAIL);        // 解锁失败
+led_control_set_pattern(LED_PATTERN_CLOSED);             // 闭盒完毕
+led_control_set_pattern(LED_PATTERN_OFF);                // 全部关闭
+
+/* 获取当前模式（可选） */
+led_pattern_t cur = led_control_get_pattern();
+```
+
+> 模式切换即时生效。内部有独立的 FreeRTOS 任务持续运行当前模式的闪烁/循环逻辑，切换后自动更新。
+
+### 后续集成指引
+
+当接入声纹验证、按键触发或语音关键词识别后，在对应的事件处理函数中调用 `led_control_set_pattern() ` 即可，无需关心 LED 硬件细节。
+
+```c
+// 示例：关键词"盘宝"触发开盒
+void on_keyword_open(void)
+{
+    led_control_set_pattern(LED_PATTERN_OPENING);   // 开盒灯光
+    servo_open(20);                                  // 舵机开盒
+    // 开盒完成后可根据结果切换
+}
+
+// 示例：声纹验证失败
+void on_verify_failed(void)
+{
+    led_control_set_pattern(LED_PATTERN_UNLOCK_FAIL);
+}
+```
+
+> ✅ 该部分已完成上板验证（三色 LED + 舵机联动）。
 
 ## 暂不包含的功能
 
@@ -114,17 +192,49 @@ ESP_ERROR_CHECK(es8311_init());
 
 ## 构建
 
-完成 ESP32-S3 目标配置后，使用 ESP-IDF 环境执行：
+### 环境要求
+
+- ESP-IDF v5.5.4（位于 `D:\Esp32\esp-idf-v5.5.4`）
+- 目标芯片：ESP32-S3
+- 使用项目根目录下的 `D:\Esp32\esp32-build.ps1` 加载环境
+
+### 编译
 
 ```powershell
-idf.py set-target esp32s3
-idf.py build
-idf.py -p COMx flash monitor
+cd D:\Esp32\test\ESP32-CHEST-PRJ
+. D:\Esp32\esp32-build.ps1
+```
+
+### 烧录
+
+```powershell
+idf.py -p COM? flash
+```
+
+将 `COM?` 替换为实际串口号（设备管理器查看）。
+
+### 查看串口日志
+
+```powershell
+idf.py -p COM? monitor
+```
+
+按 `Ctrl + ]` 退出。
+
+### 一条龙
+
+```powershell
+cd D:\Esp32\test\ESP32-CHEST-PRJ
+. D:\Esp32\esp32-build.ps1
+idf.py -p COM? flash monitor
 ```
 
 ## 协作约定
 
-- 提交前确保项目可以构建。
-- 不提交 `build/`、`sdkconfig` 和本地日志。
+- 提交前确保项目可以构建（`idf.py build` 通过）。
+- 一次提交只做一件事，提交前执行 `git diff` 检查。
+- 提交信息格式：`<type>(<scope>): <动词开头的说明>`，例如 `feat(led): add unlock fail blink pattern`。
+- 不提交 `build/`、`*.bin`、`*.elf`、`*.log`、`sdkconfig` 和本地日志。
 - 已验证的硬件接线、供电或业务协议发生变化时，同步更新本 README。
 - 未验证或未实现的功能必须明确标记为后续功能。
+- 每次实际交付使用 Git Tag 标记：`git tag -a v1.0.0 -m "Release v1.0.0"`。
