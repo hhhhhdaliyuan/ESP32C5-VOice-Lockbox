@@ -82,6 +82,36 @@ GC9A01 和 LED 用于显示当前业务状态。
 
 迁移原则：只复用已验证的底层驱动和 KWS 通信链路，不复制 SonKey 的声纹注册、显示、用户管理等业务逻辑。
 
+## ES8311 音频组件
+
+`audio_i2s` 只负责 I2S0 的 TX/RX 通道与原始立体声时隙收发；`es8311` 负责 I2C、Codec 配置和单声道 PCM API。
+
+Codec 基于 ESP Component Registry 的 `espressif/esp_codec_dev` `1.5.11`，版本由 `dependencies.lock` 锁定，组件源码随 `managed_components` 一并追踪。
+
+### 正常使用
+
+应用启动时只需初始化 Codec：
+
+```c
+ESP_ERROR_CHECK(es8311_init());
+```
+
+采集业务调用 `es8311_read_pcm()` 获取固定 20 ms 的 PCM 帧。每帧为 `640 B`，格式为 `16 kHz / 16-bit / mono / little-endian`。如需播放同格式 PCM，调用 `es8311_write_pcm()`。
+
+### 板端自检方法
+
+自检默认关闭，正常固件不会录音或回放。需要单独验证 ES8311 时：
+
+1. 将 `components/es8311/es8311_config.h` 中的 `ES8311_SELF_TEST_ENABLE` 临时改为 `1`。
+2. 在 `app_main()` 的 `es8311_init()` 后临时加入：
+
+   ```c
+   ESP_ERROR_CHECK(es8311_run_self_test());
+   ```
+
+3. 编译、烧录并监视串口。应循环出现 `self-test recording 2 seconds` 与 `self-test playing 2 seconds`，同时可听到录音回放。
+4. 验证结束后移除该临时调用，并将宏恢复为 `0`，再提交正常业务代码。
+
 ## 构建
 
 完成 ESP32-S3 目标配置后，使用 ESP-IDF 环境执行：
