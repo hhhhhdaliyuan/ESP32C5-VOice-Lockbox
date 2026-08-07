@@ -11,10 +11,11 @@
 - GPIO1 按住录音、松开上传的声纹注册流程。
 - KWS 命中后，使用最近 3 秒 PCM 进行声纹验证。
 - 只有关键词与声纹同时通过，才向业务层发布最终唤醒事件。
+- 最终唤醒事件触发 SG90 从 0° 慢速旋转到 150°，完成开盒。
 - 声纹注册状态写入 NVS，设备重启后自动恢复双重验证监听。
 - 网络异常、WebSocket 中断和音频上传异常自动重建监听会话。
 
-SG90、GC9A01 和三色 LED 的底层组件已经存在，但当前 `app_main()` 只启动语音唤醒服务。最终唤醒事件尚未绑定开盒、闭盒、灯光和屏幕业务动作。
+`chest_controller` 业务任务负责消费最终唤醒事件并驱动 SG90 开盒，`app_main()` 只负责启动控制器。GC9A01 和三色 LED 的底层组件已经存在，但尚未绑定监听、验证及开盒状态。
 
 ## 双重认证流程
 
@@ -25,6 +26,8 @@ ES8311 持续采集左声道 PCM
   -> 上传声纹验证
   -> 声纹匹配已注册用户
   -> 发布最终唤醒事件
+  -> chest_controller 业务任务分发动作
+  -> SG90 慢速旋转到 150°开盒
 ```
 
 仅出现 KWS 候选不代表唤醒成功。最终成功日志包含：
@@ -32,7 +35,7 @@ ES8311 持续采集左声道 PCM
 ```text
 === VOICEPRINT VERIFIED: ... ===
 === KWS + VOICEPRINT WAKEUP: ... ===
-main: dual-auth wakeup: ...
+chest_controller: dual-auth wakeup: ...
 ```
 
 声纹不匹配或后端请求失败时，日志会输出 `WAKEUP REJECTED`，业务层不会收到唤醒事件。
@@ -84,6 +87,7 @@ main: dual-auth wakeup: ...
 | `components/es8311/` | I2C、I2S 和 ES8311 Codec 初始化，输出 20 ms PCM 帧 |
 | `components/kws_wakeup/` | Wi-Fi、KWS WebSocket、音频队列、注册按键和双重验证状态机 |
 | `components/voiceprint_auth/` | 声纹注册/验证 HTTP 客户端和 NVS 注册状态 |
+| `components/chest_controller/` | 业务任务、关键词动作分发和宝盒外设编排 |
 | `components/board_config/` | 板级 GPIO 和外设资源分配 |
 | `components/gc9a01/` | GC9A01 显示驱动 |
 | `components/led_control/` | 三色 LED 状态模式 |
@@ -145,7 +149,7 @@ idf.py -p <PORT> monitor
 
 ## 待完成
 
-- 将最终双重唤醒事件绑定到舵机开盒和闭盒动作。
+- 增加闭盒业务动作和触发方式。
 - 接入 GC9A01 和 LED 的监听、验证、成功及失败状态。
 - 增加本地用户管理和声纹删除流程。
 - 增加开合限位、卡滞检测和执行器安全保护。
