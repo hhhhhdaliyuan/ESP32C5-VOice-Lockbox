@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <string.h>
 
+#include "board_config.h"
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -88,7 +89,7 @@ static const gc9a01_init_command_t s_init_commands[] = {
 static esp_err_t gc9a01_write_command(uint8_t command)
 {
     /* DC=0 表示本次 SPI 字节是控制器命令。GPIO 设置失败时不继续传输。 */
-    esp_err_t ret = gpio_set_level(GC9A01_DC_GPIO, 0);
+    esp_err_t ret = gpio_set_level(BOARD_GC9A01_DC_GPIO, 0);
     if (ret != ESP_OK) {
         return ret;
     }
@@ -98,7 +99,7 @@ static esp_err_t gc9a01_write_command(uint8_t command)
 static esp_err_t gc9a01_write_data(const void *data, size_t length)
 {
     /* DC=1 表示本次 SPI 字节是命令参数或 GRAM 像素数据。 */
-    esp_err_t ret = gpio_set_level(GC9A01_DC_GPIO, 1);
+    esp_err_t ret = gpio_set_level(BOARD_GC9A01_DC_GPIO, 1);
     if (ret != ESP_OK) {
         return ret;
     }
@@ -168,10 +169,10 @@ static esp_err_t gc9a01_init_unlocked(void)
 {
     /* 先初始化共享总线；其他屏幕可使用相同 SCLK/MOSI/MISO 配置重复调用。 */
     const common_spi_bus_config_t bus_config = {
-        .host = GC9A01_SPI_HOST,
-        .mosi_io_num = GC9A01_SPI_MOSI_GPIO,
-        .miso_io_num = GC9A01_SPI_MISO_GPIO,
-        .sclk_io_num = GC9A01_SPI_SCLK_GPIO,
+        .host = BOARD_GC9A01_SPI_HOST,
+        .mosi_io_num = BOARD_GC9A01_SPI_MOSI_GPIO,
+        .miso_io_num = BOARD_GC9A01_SPI_MISO_GPIO,
+        .sclk_io_num = BOARD_GC9A01_SPI_SCLK_GPIO,
         .max_transfer_bytes = GC9A01_SPI_MAX_TRANSFER_BYTES,
     };
     esp_err_t ret = common_spi_bus_init(&bus_config);
@@ -182,12 +183,12 @@ static esp_err_t gc9a01_init_unlocked(void)
     if (!s_spi_device.handle) {
         /* GC9A01 使用独立 CS=GPIO12，因此不会接收其他 SPI 设备的事务。 */
         const common_spi_device_config_t device_config = {
-            .cs_io_num = GC9A01_SPI_CS_GPIO,
+            .cs_io_num = BOARD_GC9A01_SPI_CS_GPIO,
             .clock_speed_hz = GC9A01_SPI_CLOCK_HZ,
             .mode = GC9A01_SPI_MODE,
             .max_transfer_bytes = GC9A01_SPI_MAX_TRANSFER_BYTES,
         };
-        ret = common_spi_device_add(GC9A01_SPI_HOST, &device_config, &s_spi_device);
+        ret = common_spi_device_add(BOARD_GC9A01_SPI_HOST, &device_config, &s_spi_device);
         if (ret != ESP_OK) {
             return ret;
         }
@@ -195,7 +196,7 @@ static esp_err_t gc9a01_init_unlocked(void)
 
     /* DC 与 RST 只由控制器层管理，SPI 传输层不配置这两个 GPIO。 */
     gpio_config_t control_gpio_config = {
-        .pin_bit_mask = (1ULL << GC9A01_DC_GPIO) | (1ULL << GC9A01_RST_GPIO),
+        .pin_bit_mask = (1ULL << BOARD_GC9A01_DC_GPIO) | (1ULL << BOARD_GC9A01_RST_GPIO),
         .mode = GPIO_MODE_OUTPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
@@ -207,17 +208,17 @@ static esp_err_t gc9a01_init_unlocked(void)
     }
 
     /* 按参考时序执行高-低-高硬件复位，随后等待控制器完成内部启动。 */
-    ret = gpio_set_level(GC9A01_RST_GPIO, 1);
+    ret = gpio_set_level(BOARD_GC9A01_RST_GPIO, 1);
     if (ret != ESP_OK) {
         return ret;
     }
     vTaskDelay(pdMS_TO_TICKS(10));
-    ret = gpio_set_level(GC9A01_RST_GPIO, 0);
+    ret = gpio_set_level(BOARD_GC9A01_RST_GPIO, 0);
     if (ret != ESP_OK) {
         return ret;
     }
     vTaskDelay(pdMS_TO_TICKS(10));
-    ret = gpio_set_level(GC9A01_RST_GPIO, 1);
+    ret = gpio_set_level(BOARD_GC9A01_RST_GPIO, 1);
     if (ret != ESP_OK) {
         return ret;
     }

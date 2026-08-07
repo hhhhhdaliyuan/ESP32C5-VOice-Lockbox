@@ -2,17 +2,13 @@
 
 #include <stdio.h>
 #include <stdbool.h>
+#include "board_config.h"
 #include "esp_log.h"
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
 static const char *TAG = "led_control";
-
-/* ---------- 硬件引脚定义 ---------- */
-#define LED_RED_GPIO    3
-#define LED_GREEN_GPIO  16
-#define LED_YELLOW_GPIO 18
 
 /* ---------- 定时参数（毫秒） ---------- */
 #define BLINK_UNLOCK_SUCCESS_MS    300   /* 解锁成功闪烁间隔 */
@@ -31,9 +27,9 @@ static bool s_initialized = false;
 
 static void led_set(uint8_t red, uint8_t green, uint8_t yellow)
 {
-    gpio_set_level(LED_RED_GPIO,    red);
-    gpio_set_level(LED_GREEN_GPIO,  green);
-    gpio_set_level(LED_YELLOW_GPIO, yellow);
+    gpio_set_level(BOARD_LED_RED_GPIO,    red);
+    gpio_set_level(BOARD_LED_GREEN_GPIO,  green);
+    gpio_set_level(BOARD_LED_YELLOW_GPIO, yellow);
 }
 static void all_off(void)  { led_set(0, 0, 0); }
 static void green_on(void) { led_set(0, 1, 0); }
@@ -163,9 +159,9 @@ esp_err_t led_control_init(void)
 
     /* 配置 GPIO */
     gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << LED_RED_GPIO)
-                      | (1ULL << LED_GREEN_GPIO)
-                      | (1ULL << LED_YELLOW_GPIO),
+        .pin_bit_mask = (1ULL << BOARD_LED_RED_GPIO)
+                      | (1ULL << BOARD_LED_GREEN_GPIO)
+                      | (1ULL << BOARD_LED_YELLOW_GPIO),
         .mode = GPIO_MODE_OUTPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
@@ -191,7 +187,7 @@ esp_err_t led_control_init(void)
     s_pattern = LED_PATTERN_OFF;
 
     ESP_LOGI(TAG, "LED control initialized (R=GPIO%d, G=GPIO%d, Y=GPIO%d)",
-             LED_RED_GPIO, LED_GREEN_GPIO, LED_YELLOW_GPIO);
+             BOARD_LED_RED_GPIO, BOARD_LED_GREEN_GPIO, BOARD_LED_YELLOW_GPIO);
     return ESP_OK;
 }
 

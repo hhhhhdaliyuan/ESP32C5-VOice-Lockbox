@@ -2,8 +2,8 @@
  * @file led_control.h
  * @brief 三色 LED 控制驱动 — 支持多种灯光模式
  *
- * 红 LED → GPIO3，绿 LED → GPIO16，黄 LED → GPIO18
- * 所有 LED 另一端接 GND（GPIO 高电平点亮）
+ * 物理 GPIO 由 board_config 组件统一定义。
+ * 所有 LED 另一端接 GND（GPIO 高电平点亮）。
  *
  * 提供模式切换 API，内部 FreeRTOS 任务自动执行对应闪烁/循环效果。
  */

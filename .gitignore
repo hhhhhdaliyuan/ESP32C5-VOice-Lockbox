@@ -1,18 +1,43 @@
+# ESP-IDF build outputs
 build/
 sdkconfig
 sdkconfig.old
+*.bin
+*.elf
+*.hex
+*.map
 
-*.temp
-*.log
+# Downloaded components and caches
+managed_components/
+ccache/
+.ccache/
+.cache/
+__pycache__/
+*.pyc
 
+# Local environment and editor state
+.env
+.env.*
+!.env.example
 .vscode/
+.idea/
 
+# Audio captures, serial exports, and temporary diagnostics
+*.wav
+*.pcm
+*.raw
+*.aac
+*.mp3
+records-*.json
+serial-*.json
+*.log
+*.temp
+*.tmp
+
+# Local notes and assistant metadata
+doc/
 .claude/
 .agents/
 .codex/
 .reasonix/
-.idea/
-
 superpowers/
-
-doc/

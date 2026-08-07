@@ -1,0 +1,20 @@
+menu "Voiceprint authentication configuration"
+
+    config VOICEPRINT_SERVER_URL
+        string "Voiceprint HTTP server URL"
+        default "http://114.132.243.95:80"
+
+    config VOICEPRINT_SPEAKER_ID
+        string "Owner voiceprint speaker ID"
+        default "esp32-chest-owner-001"
+
+    config VOICEPRINT_DISPLAY_NAME
+        string "Owner voiceprint display name"
+        default "ESP32 Chest Owner"
+
+    config VOICEPRINT_HTTP_TIMEOUT_MS
+        int "Voiceprint HTTP timeout (ms)"
+        range 3000 60000
+        default 15000
+
+endmenu

@@ -11,8 +11,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "driver/gpio.h"
-#include "driver/spi_master.h"
+#include "board_config.h"
 #include "esp_err.h"
 
 #ifdef __cplusplus
@@ -24,15 +23,15 @@ extern "C" {
 /** @brief LCD 可见区域高度，单位为像素。 */
 #define GC9A01_HEIGHT 240U
 
-/** @name GC9A01 硬件连接与 SPI 设备配置 */
+/** @name GC9A01 SPI 设备配置 */
 /** @{ */
-#define GC9A01_SPI_HOST               SPI2_HOST
-#define GC9A01_SPI_SCLK_GPIO          GPIO_NUM_9
-#define GC9A01_SPI_MOSI_GPIO          GPIO_NUM_10
-#define GC9A01_SPI_MISO_GPIO          (-1)
-#define GC9A01_DC_GPIO                GPIO_NUM_11
-#define GC9A01_SPI_CS_GPIO            GPIO_NUM_12
-#define GC9A01_RST_GPIO               GPIO_NUM_13
+#define GC9A01_SPI_HOST               BOARD_GC9A01_SPI_HOST
+#define GC9A01_SPI_SCLK_GPIO          BOARD_GC9A01_SPI_SCLK_GPIO
+#define GC9A01_SPI_MOSI_GPIO          BOARD_GC9A01_SPI_MOSI_GPIO
+#define GC9A01_SPI_MISO_GPIO          BOARD_GC9A01_SPI_MISO_GPIO
+#define GC9A01_DC_GPIO                BOARD_GC9A01_DC_GPIO
+#define GC9A01_SPI_CS_GPIO            BOARD_GC9A01_SPI_CS_GPIO
+#define GC9A01_RST_GPIO               BOARD_GC9A01_RST_GPIO
 #define GC9A01_SPI_CLOCK_HZ           60000000
 #define GC9A01_SPI_MODE               0U
 #define GC9A01_SPI_MAX_TRANSFER_BYTES (GC9A01_WIDTH * GC9A01_HEIGHT * 2U)

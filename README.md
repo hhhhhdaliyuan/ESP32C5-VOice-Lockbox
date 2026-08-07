@@ -1,259 +1,151 @@
-﻿# Chest
+# ESP32 Chest
 
-基于 ESP32-S3 的智能宝盒原型项目。
+基于 ESP32-S3 的智能宝盒固件。当前版本已经完成 ES8311 实时音频采集、云端关键词识别、按键声纹注册，以及关键词与声纹双重验证。
 
-当前目标是先完成"关键词识别并自动开盒、闭盒"的稳定闭环；后续逐步扩展声纹验证、局域网管理和物品收纳统计等功能。
+## 当前状态
 
-## 当前固件状态
+已完成并通过实机验证：
 
-`app_main()` 当前负责初始化 SG90 舵机、ES8311 Codec、LED 控制器和 GC9A01 显示控制器。GC9A01 已完成上板验证，主程序仅执行控制器初始化，不绘制业务页面；关键词识别、PCM 采集、舵机开闭及 LED 状态联动尚未接入主程序。
+- ES8311 左声道实时采集，格式为 `16 kHz / mono / pcm_s16le`。
+- KWS WebSocket 持续监听 `你好盘宝` 和 `你好鹰老师`。
+- GPIO1 按住录音、松开上传的声纹注册流程。
+- KWS 命中后，使用最近 3 秒 PCM 进行声纹验证。
+- 只有关键词与声纹同时通过，才向业务层发布最终唤醒事件。
+- 声纹注册状态写入 NVS，设备重启后自动恢复双重验证监听。
+- 网络异常、WebSocket 中断和音频上传异常自动重建监听会话。
 
-## 第一阶段目标
+SG90、GC9A01 和三色 LED 的底层组件已经存在，但当前 `app_main()` 只启动语音唤醒服务。最终唤醒事件尚未绑定开盒、闭盒、灯光和屏幕业务动作。
 
-后续将验证以下完整交互链路：
+## 双重认证流程
 
 ```text
-ES8311 持续采集音频
-  -> 复用 SonKey 当前 KWS 业务
-  -> 命中关键词
-  -> SG90 执行开盒或闭盒动作
-  -> GC9A01 与 LED 更新业务状态
+ES8311 持续采集左声道 PCM
+  -> KWS WebSocket 识别关键词
+  -> KWS 命中后提取最近 3 秒 PCM
+  -> 上传声纹验证
+  -> 声纹匹配已注册用户
+  -> 发布最终唤醒事件
 ```
 
-## 规划中的第一阶段功能
+仅出现 KWS 候选不代表唤醒成功。最终成功日志包含：
 
-计划接入 ES8311 持续音频采集，并复用 SonKey 当前 KWS 业务识别关键词。
+```text
+=== VOICEPRINT VERIFIED: ... ===
+=== KWS + VOICEPRINT WAKEUP: ... ===
+main: dual-auth wakeup: ...
+```
 
-| 关键词 | 动作 |
+声纹不匹配或后端请求失败时，日志会输出 `WAKEUP REJECTED`，业务层不会收到唤醒事件。
+
+## 声纹注册
+
+注册按键连接在 GPIO1 与 GND 之间，固件启用内部上拉，低电平有效。
+
+1. 按住 GPIO1 注册按键。
+2. 对着麦克风说任意内容，不要求包含关键词。
+3. 持续至少 3 秒，建议录制 5 到 8 秒。
+4. 松开按键，固件上传按住期间的 PCM。
+5. 注册成功后自动进入 KWS 正常监听。
+
+单次录音最长 15 秒。再次执行相同操作会使用配置的 `speaker_id` 继续注册该用户。
+
+关键日志：
+
+```text
+=== VOICEPRINT ENROLL START ... ===
+=== VOICEPRINT ENROLL UPLOADING ... ===
+=== VOICEPRINT ENROLL SUCCESS ... ===
+```
+
+## 音频与网络
+
+- 采样率：`16000 Hz`
+- 位宽：`16-bit signed little-endian`
+- 声道：单声道，取 ES8311 左 I2S slot
+- 采集帧：`20 ms / 640 B`
+- 音频队列：100 帧，约 2 秒
+- KWS 上传批次：`200 ms / 6400 B`
+- 声纹验证窗口：最近 3 秒，`96000 B`
+- 声纹注册窗口：3 至 15 秒
+
+后端协议：
+
+- KWS：WebSocket `/v1/kws/listen`
+- 声纹注册：`POST /v1/voiceprint/enroll`
+- 声纹验证：`POST /v1/voiceprint/verify`
+- 声纹列表：`GET /v1/voiceprint/speakers`
+
+服务器地址、设备 ID、产品 ID、声纹 ID 和鉴权信息均通过项目配置提供，不应写入业务代码或 README。
+
+## 主要组件
+
+| 组件 | 职责 |
 | --- | --- |
-| `你好盘宝` | 控制 SG90 自动开盒 |
-| `你好鹰老师` | 控制 SG90 自动闭盒 |
+| `components/es8311/` | I2C、I2S 和 ES8311 Codec 初始化，输出 20 ms PCM 帧 |
+| `components/kws_wakeup/` | Wi-Fi、KWS WebSocket、音频队列、注册按键和双重验证状态机 |
+| `components/voiceprint_auth/` | 声纹注册/验证 HTTP 客户端和 NVS 注册状态 |
+| `components/board_config/` | 板级 GPIO 和外设资源分配 |
+| `components/gc9a01/` | GC9A01 显示驱动 |
+| `components/led_control/` | 三色 LED 状态模式 |
+| `components/servo/` | 舵机控制 |
 
-当盒子已经处于目标状态时，规划为不重复驱动 SG90，只刷新当前业务状态。
+## GPIO 分配
 
-## 规划中的屏幕与灯光状态
+| 功能 | GPIO |
+| --- | ---: |
+| 声纹注册按键 | GPIO1 |
+| 红色 LED | GPIO3 |
+| 绿色 LED | GPIO2 |
+| 黄色 LED | GPIO7 |
+| SG90 PWM | GPIO6 |
+| ES8311 I2C SDA / SCL | GPIO17 / GPIO16 |
+| ES8311 I2S MCLK / BCLK / WS | GPIO20 / GPIO4 / GPIO5 |
+| ESP32 I2S TX -> ES8311 DIN | GPIO18 |
+| ES8311 DOUT -> ESP32 I2S RX | GPIO19 |
+| GC9A01 SCLK / MOSI | GPIO9 / GPIO10 |
+| GC9A01 DC / CS / RST | GPIO11 / GPIO12 / GPIO13 |
 
-后续由 GC9A01 和 LED 显示业务状态。
+ES8311、按键和其他外设必须共地。舵机应使用满足电流要求的独立电源，并与主控共地。
 
-| 状态 | 含义 |
-| --- | --- |
-| `BOOTING` | 系统启动中 |
-| `CONNECTING` | 连接语音服务 |
-| `LISTENING` | 等待关键词 |
-| `OPENING` / `OPENED` | 开盒中 / 已开盒 |
-| `CLOSING` / `CLOSED` | 闭盒中 / 已闭盒 |
-| `ERROR` | 网络、音频或执行器异常 |
+## 项目配置
 
-## 已确认硬件
+在 ESP-IDF 项目配置中设置：
 
-| 模块 | 方案 | 当前职责 |
-| --- | --- | --- |
-| 主控 | ESP32-S3 | 系统控制与网络通信 |
-| 音频编解码器 | ES8311 | 音频采集与播放基础能力 |
-| 执行器 | SG90 舵机 | 宝盒开合功能验证 |
-| 显示屏 | GC9A01 | 显示业务状态 |
-| 状态提示 | 3 x LED（红、绿、黄） | 显示开盒/闭盒/解锁结果 |
-| 语音业务 | SonKey 当前 KWS 服务 | 识别关键词 |
-
-### 硬件接线约定
-
-| 设备 | 信号线 | GPIO | 另一端 |
-|------|--------|------|--------|
-| 舵机 MG90S | 信号线 | **GPIO6** | — |
-| 红色 LED | 正极（阳极） | **GPIO3** | GND |
-| 绿色 LED | 正极（阳极） | **GPIO16** | GND |
-| 黄色 LED | 正极（阳极） | **GPIO18** | GND |
-| GC9A01 | SCLK | **GPIO9** | LCD SCL |
-| GC9A01 | MOSI | **GPIO10** | LCD SDA |
-| GC9A01 | DC | **GPIO11** | LCD DC |
-| GC9A01 | CS | **GPIO12** | LCD CS |
-| GC9A01 | RST | **GPIO13** | LCD RST |
-
-- LED 为**高电平点亮**（GPIO 输出 1 → LED 亮）。
-- 所有 LED 共地，建议外接 100 Ω 限流电阻。
-- SG90 必须使用独立 5 V 电源，且电源负极必须与 ESP32-S3 GND 共地。
-- GC9A01 使用 SPI2、Mode 0、60 MHz；MISO 未使用。
-- GC9A01 的 CS 必须接入 GPIO12，才能与后续 SPI 设备共享 GPIO9（SCLK）和 GPIO10（MOSI）。
-- 未完成实物验证的引脚，不写入本 README。
-- 完成接线、构建和烧录验证后，应在同一提交中更新 README。
-
-### GC9A01 显示验证
-
-GC9A01 控制器、通用 SPI 传输层、8x16 ASCII 字模及文字/数值/RGB565 绘图 API 已完成上板验证。验证画面确认了初始化、文字、十进制、十六进制、浮点和红绿蓝颜色显示均正常。
-
-SPI 传输由 `components/common_spi/` 管理：一条 SPI 总线可添加多个带独立 CS 的设备。GC9A01 使用 SPI2、GPIO9/10 和 CS=GPIO12；后续设备可复用 SCLK/MOSI，并使用各自的 CS、SPI Mode 和频率。
-
-屏幕为圆形，虽然控制器坐标为 240x240 矩形，但四角像素不可见。业务页面应将关键文字和控件布局在圆心附近，避免放置在顶部、底部或左右边缘。
-
-## LED 灯光模式
-
-三色 LED 用于直观反馈宝盒状态。底层由 `components/led_control/` 驱动，提供以下灯光模式：
-
-> 当前 `app_main()` 只调用 `led_control_init()`，尚未在业务事件中调用 `led_control_set_pattern()`。
-
-| 模式 | 枚举值 | 灯光效果 | 使用场景 |
-|------|--------|----------|----------|
-| 全部关闭 | `LED_PATTERN_OFF` | 全部熄灭 | 系统待机/休眠 |
-| 待机 | `LED_PATTERN_IDLE` | 绿灯常亮 | 系统就绪，等待指令 |
-| 解锁成功 | `LED_PATTERN_UNLOCK_SUCCESS` | 绿灯闪烁 3 次后常亮 | 声纹/关键词验证通过 |
-| 解锁失败 | `LED_PATTERN_UNLOCK_FAIL` | 红灯快速连续闪烁 | 声纹/关键词验证失败 |
-| 开盒过程 | `LED_PATTERN_OPENING` | 多色循环：红→绿→黄→红+绿→绿+黄→红+黄→全亮→全灭，循环步进 200 ms | 舵机开盒或闭盒过程中 |
-| 闭盒完毕 | `LED_PATTERN_CLOSED` | 绿+黄同时闪烁（400 ms 间隔） | 盒子完全闭合后 |
-
-### 与舵机的联动规则
-
-| 业务事件 | 调用顺序 | 说明 |
-|----------|----------|------|
-| 开盒 | `set_pattern(OPENING)` → `servo_open(20)` | 先开启多色循环，再启动舵机旋转 |
-| 闭盒 | `set_pattern(OPENING)` → `servo_close(20)` | 开盒和闭盒过程中复用同一多色循环 |
-| 闭盒完毕 | `set_pattern(CLOSED)` | 舵机到位后切换 |
-| 解锁成功 | `set_pattern(UNLOCK_SUCCESS)` | 可在开盒前驱动，也可在开盒后驱动 |
-| 解锁失败 | `set_pattern(UNLOCK_FAIL)` | 拒绝动作后保持 |
-| 空闲待机 | `set_pattern(IDLE)` | 无事件时默认状态 |
-
-### 函数 API 参考
-
-由 `components/led_control/` 提供，`main.c` 或其他业务模块调用：
-
-```c
-#include "led_control.h"
-
-/* 初始化（在 app_main 中调用一次） */
-led_control_init();
-
-/* 切换灯光模式 — 在业务事件发生时调用 */
-led_control_set_pattern(LED_PATTERN_IDLE);              // 待机
-led_control_set_pattern(LED_PATTERN_OPENING);            // 开盒/闭盒中
-led_control_set_pattern(LED_PATTERN_UNLOCK_SUCCESS);     // 解锁成功
-led_control_set_pattern(LED_PATTERN_UNLOCK_FAIL);        // 解锁失败
-led_control_set_pattern(LED_PATTERN_CLOSED);             // 闭盒完毕
-led_control_set_pattern(LED_PATTERN_OFF);                // 全部关闭
-
-/* 获取当前模式（可选） */
-led_pattern_t cur = led_control_get_pattern();
+```text
+KWS wakeup configuration
+Voiceprint authentication configuration
 ```
 
-> 模式切换即时生效。内部有独立的 FreeRTOS 任务持续运行当前模式的闪烁/循环逻辑，切换后自动更新。
+需要配置的项目包括：
 
-### 后续集成指引
+- Wi-Fi SSID 和密码。
+- KWS WebSocket 地址、设备 ID、产品 ID 和可选鉴权 token。
+- 声纹 HTTP 服务地址、`speaker_id` 和显示名称。
+- WebSocket 重连间隔。
+- 可选的原始立体声诊断。
 
-当接入声纹验证、按键触发或语音关键词识别后，在对应的事件处理函数中调用 `led_control_set_pattern() ` 即可，无需关心 LED 硬件细节。
+不要提交包含个人网络凭据的 `sdkconfig`。
 
-```c
-// 示例：关键词"盘宝"触发开盒
-void on_keyword_open(void)
-{
-    led_control_set_pattern(LED_PATTERN_OPENING);   // 开盒灯光
-    servo_open(20);                                  // 舵机开盒
-    // 开盒完成后可根据结果切换
-}
+## 构建与烧录
 
-// 示例：声纹验证失败
-void on_verify_failed(void)
-{
-    led_control_set_pattern(LED_PATTERN_UNLOCK_FAIL);
-}
-```
+要求：
 
-> ✅ 该部分已完成上板验证（三色 LED + 舵机联动）。
+- ESP-IDF 5.5.x
+- 目标芯片 ESP32-S3
+- 可用 PSRAM
 
-## 暂不包含的功能
-
-- ES8311 PCM 采集、关键词识别及其驱动 SG90/LED 的业务闭环。
-- 按键触发开盒或闭盒。
-- 声纹注册与声纹验证解锁。
-- 触摸输入、用户管理页面和局域网网页后台。
-- 物品语音录入与数量统计。
-- 清洁模式、娱乐模式和自动休眠。
-
-## 后续功能
-
-- 声纹注册、声纹验证和用户信息管理。
-- 局域网后台管理。
-- 物品收纳信息的语音录入与统计。
-- 清洁模式、娱乐模式和自动休眠。
-- 开合限位、卡滞检测和更完善的安全保护。
-
-## 复用来源
-
-音频采集、ES8311 配置、SG90 控制基础和 KWS 业务参考：
-
-SonKey 工程。
-
-迁移原则：只复用已验证的底层驱动和 KWS 通信链路，不复制 SonKey 的声纹注册、显示、用户管理等业务逻辑。
-
-## ES8311 音频组件
-
-`audio_i2s` 只负责 I2S0 的 TX/RX 通道与原始立体声时隙收发；`es8311` 负责 I2C、Codec 配置和单声道 PCM API。
-
-Codec 基于 ESP Component Registry 的 `espressif/esp_codec_dev` `1.5.11`，版本由 `dependencies.lock` 锁定，组件源码随 `managed_components` 一并追踪。
-
-### 正常使用
-
-应用启动时只需初始化 Codec：
-
-```c
-ESP_ERROR_CHECK(es8311_init());
-```
-
-采集业务调用 `es8311_read_pcm()` 获取固定 20 ms 的 PCM 帧。每帧为 `640 B`，格式为 `16 kHz / 16-bit / mono / little-endian`。如需播放同格式 PCM，调用 `es8311_write_pcm()`。
-
-### 板端自检方法
-
-自检默认关闭，正常固件不会录音或回放。需要单独验证 ES8311 时：
-
-1. 将 `components/es8311/es8311_config.h` 中的 `ES8311_SELF_TEST_ENABLE` 临时改为 `1`。
-2. 在 `app_main()` 的 `es8311_init()` 后临时加入：
-
-   ```c
-   ESP_ERROR_CHECK(es8311_run_self_test());
-   ```
-
-3. 编译、烧录并监视串口。应循环出现 `self-test recording 2 seconds` 与 `self-test playing 2 seconds`，同时可听到录音回放。
-4. 验证结束后移除该临时调用，并将宏恢复为 `0`，再提交正常业务代码。
-
-## 构建
-
-### 环境要求
-
-- ESP-IDF v5.5.4
-- 目标芯片：ESP32-S3
-- 在已加载 ESP-IDF 环境的终端中执行以下命令
-
-### 编译
-
-```powershell
+```bash
+idf.py set-target esp32s3
 idf.py build
+idf.py -p <PORT> flash
+idf.py -p <PORT> monitor
 ```
 
-### 烧录
+`<PORT>` 使用实际连接的串口设备名称。
 
-```powershell
-idf.py -p COM? flash
-```
+## 待完成
 
-将 `COM?` 替换为实际串口号（设备管理器查看）。
-
-### 查看串口日志
-
-```powershell
-idf.py -p COM? monitor
-```
-
-按 `Ctrl + ]` 退出。
-
-### 一条龙
-
-```powershell
-idf.py -p COM? flash monitor
-```
-
-## 协作约定
-
-- 提交前确保项目可以构建（`idf.py build` 通过）。
-- 一次提交只做一件事，提交前执行 `git diff` 检查。
-- 提交信息格式：`<type>(<scope>): <动词开头的说明>`，例如 `feat(led): add unlock fail blink pattern`。
-- 不提交 `build/`、`*.bin`、`*.elf`、`*.log`、`sdkconfig` 和本地日志。
-- 已验证的硬件接线、供电或业务协议发生变化时，同步更新本 README。
-- 未验证或未实现的功能必须明确标记为后续功能。
-- 每次实际交付使用 Git Tag 标记：`git tag -a v1.0.0 -m "Release v1.0.0"`。
+- 将最终双重唤醒事件绑定到舵机开盒和闭盒动作。
+- 接入 GC9A01 和 LED 的监听、验证、成功及失败状态。
+- 增加本地用户管理和声纹删除流程。
+- 增加开合限位、卡滞检测和执行器安全保护。
