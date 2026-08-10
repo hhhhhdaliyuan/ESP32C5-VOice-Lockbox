@@ -31,34 +31,4 @@ menu "KWS wakeup configuration"
         range 500 60000
         default 2000
 
-    config KWS_STEREO_DIAGNOSTICS
-        bool "Enable raw stereo capture diagnostics"
-        default n
-        help
-            Allocate a PSRAM capture buffer and enable the CAPTURE console
-            command plus sequenced Base64 export. Keep this disabled during
-            normal operation.
-
-    if KWS_STEREO_DIAGNOSTICS
-
-        config KWS_STEREO_CAPTURE_DELAY_MS
-            int "Delay before stereo diagnostic capture (ms)"
-            range 0 120000
-            default 3000
-            help
-                After the KWS backend confirms session_started, wait this long
-                before automatically printing the SPEAK NOW prompt and starting
-                capture. Sending CAPTURE over the console starts it immediately.
-
-        config KWS_STEREO_CAPTURE_SECONDS
-            int "Stereo diagnostic capture duration (seconds)"
-            range 1 15
-            default 8
-            help
-                Preserve raw left and right I2S slots in PSRAM. A low-priority
-                task prints sequenced Base64 lines after capture for WAV
-                reconstruction.
-
-    endif
-
 endmenu

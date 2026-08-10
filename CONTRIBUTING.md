@@ -1,6 +1,6 @@
 # 贡献指南
 
-感谢你为 Chest 项目贡献代码和文档。本项目基于 ESP-IDF，目标芯片为 ESP32-S3。
+感谢你为 Chest 项目贡献代码和文档。本项目基于 ESP-IDF，目标芯片为 ESP32-C5。
 
 ## 贡献原则
 
@@ -13,7 +13,7 @@
 在已加载 ESP-IDF 环境的终端中，于项目根目录执行：
 
 ```powershell
-idf.py set-target esp32s3
+idf.py set-target esp32c5
 idf.py build
 ```
 
@@ -35,9 +35,9 @@ idf.py -p COMx flash monitor
 
 ## 硬件与安全验证
 
-- 新增或修改 GPIO 分配前，确认其未与 ESP32-S3 的启动、PSRAM/MSPI 或现有外设冲突。
+- 新增或修改 GPIO 分配前，确认其未与 ESP32-C5 的启动、PSRAM/MSPI 或现有外设冲突。
 - 记录实际验证过的 GPIO、供电和接线；未验证的信息不得写入 `README.md`。
-- SG90 必须使用独立 5 V 电源，且该电源负极必须与 ESP32-S3 GND 共地。
+- SG90 必须使用独立 5 V 电源，且该电源负极必须与 ESP32-C5 GND 共地。
 - 涉及舵机、音频、显示或 LED 的修改，除构建通过外，还应完成对应硬件功能的烧录验证。
 
 ## 提交信息

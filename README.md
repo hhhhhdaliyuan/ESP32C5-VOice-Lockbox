@@ -1,6 +1,8 @@
 # ESP32 Chest
 
-基于 ESP32-S3 的智能宝盒固件。当前版本已经完成 ES8311 实时音频采集、云端关键词识别、按键声纹注册，以及关键词与声纹双重验证。
+基于 ESP32-C5-WROOM-1 MCN16R8 的智能宝盒固件。当前第一阶段只启用 ES8311
+实时音频采集、云端关键词识别、按键声纹注册，以及关键词与声纹双重验证。
+显示屏、LED 和舵机将在语音链路稳定后分阶段迁移。
 
 ## 当前状态
 
@@ -135,11 +137,11 @@ Voiceprint authentication configuration
 要求：
 
 - ESP-IDF 5.5.x
-- 目标芯片 ESP32-S3
-- 可用 PSRAM
+- 目标芯片 ESP32-C5-WROOM-1 MCN16R8
+- 16 MB Flash 和 8 MB PSRAM
 
 ```bash
-idf.py set-target esp32s3
+idf.py set-target esp32c5
 idf.py build
 idf.py -p <PORT> flash
 idf.py -p <PORT> monitor

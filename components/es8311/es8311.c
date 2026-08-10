@@ -15,9 +15,14 @@
 
 static const char *TAG = "es8311";
 
-#define ES8311_MCLK_MULTIPLE       384
+/*
+ * The ESP32-C5-WROOM-1 bring-up board was verified with the ES8311 running
+ * at 16 kHz and a 256x MCLK. Keep the I2S driver and codec divider aligned.
+ */
+#define ES8311_MCLK_MULTIPLE       256
 #define ES8311_INIT_RETRIES        3
 #define ES8311_RETRY_DELAY_MS      200
+#define ES8311_MCLK_SETTLE_DELAY_MS 100
 #define ES8311_IO_TIMEOUT_MS       100
 
 static i2s_chan_handle_t s_tx_handle;
@@ -231,6 +236,7 @@ esp_err_t es8311_init(void)
     if (ret != ESP_OK) {
         return ret;
     }
+    vTaskDelay(pdMS_TO_TICKS(ES8311_MCLK_SETTLE_DELAY_MS));
 
     for (int attempt = 1; attempt <= ES8311_INIT_RETRIES; ++attempt) {
         ret = es8311_codec_init();
@@ -264,7 +270,7 @@ esp_err_t es8311_read_stereo_pcm(void *buffer, size_t buffer_size,
     size_t stereo_bytes_read = 0;
     esp_err_t ret = i2s_channel_read(
         s_rx_handle, buffer, ES8311_STEREO_FRAME_BYTES, &stereo_bytes_read,
-        pdMS_TO_TICKS(ES8311_IO_TIMEOUT_MS));
+        ES8311_IO_TIMEOUT_MS);
     if (ret != ESP_OK || stereo_bytes_read != ES8311_STEREO_FRAME_BYTES) {
         if (bytes_read) {
             *bytes_read = 0;

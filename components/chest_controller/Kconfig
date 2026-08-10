@@ -1,0 +1,11 @@
+menu "Chest controller"
+
+config CHEST_ENABLE_SERVO
+    bool "Enable SG90 lid actuator"
+    default n
+    help
+        Initialize and drive the SG90 lid actuator after a verified KWS and
+        voiceprint event. Keep this disabled during ESP32-C5 voice-only
+        bring-up until the actuator wiring and power supply are validated.
+
+endmenu

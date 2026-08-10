@@ -27,5 +27,5 @@ direct_dependencies:
 - espressif/esp_codec_dev
 - espressif/esp_websocket_client
 manifest_hash: 7f1f3bdd610e2847e642e2db5183043251e2b219c327ee17a15bacf8086adf87
-target: esp32s3
+target: esp32c5
 version: 2.0.0

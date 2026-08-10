@@ -112,6 +112,20 @@ static bool gc9a01_window_valid(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t 
     return x0 <= x1 && y0 <= y1 && x1 < GC9A01_WIDTH && y1 < GC9A01_HEIGHT;
 }
 
+static bool gc9a01_pins_assigned(void)
+{
+    return BOARD_GC9A01_SPI_SCLK_GPIO != GPIO_NUM_NC
+           && BOARD_GC9A01_SPI_MOSI_GPIO != GPIO_NUM_NC
+           && BOARD_GC9A01_DC_GPIO != GPIO_NUM_NC
+           && BOARD_GC9A01_SPI_CS_GPIO != GPIO_NUM_NC
+           && BOARD_GC9A01_RST_GPIO != GPIO_NUM_NC;
+}
+
+static uint64_t gc9a01_gpio_bit(gpio_num_t pin)
+{
+    return pin == GPIO_NUM_NC ? 0 : 1ULL << pin;
+}
+
 static bool gc9a01_text_region_valid(uint8_t line, uint8_t column, uint8_t width)
 {
     /* 文本接口使用 1-based 格位，width 个字符必须全部落在一行内。 */
@@ -167,6 +181,10 @@ static esp_err_t gc9a01_draw_char_unchecked(uint8_t line, uint8_t column, char c
 
 static esp_err_t gc9a01_init_unlocked(void)
 {
+    if (!gc9a01_pins_assigned()) {
+        return ESP_ERR_NOT_SUPPORTED;
+    }
+
     /* 先初始化共享总线；其他屏幕可使用相同 SCLK/MOSI/MISO 配置重复调用。 */
     const common_spi_bus_config_t bus_config = {
         .host = BOARD_GC9A01_SPI_HOST,
@@ -196,7 +214,8 @@ static esp_err_t gc9a01_init_unlocked(void)
 
     /* DC 与 RST 只由控制器层管理，SPI 传输层不配置这两个 GPIO。 */
     gpio_config_t control_gpio_config = {
-        .pin_bit_mask = (1ULL << BOARD_GC9A01_DC_GPIO) | (1ULL << BOARD_GC9A01_RST_GPIO),
+        .pin_bit_mask = gc9a01_gpio_bit(BOARD_GC9A01_DC_GPIO)
+                        | gc9a01_gpio_bit(BOARD_GC9A01_RST_GPIO),
         .mode = GPIO_MODE_OUTPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,

@@ -1,10 +1,7 @@
 #include "kws_wakeup.h"
 
-#include <limits.h>
-#include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -25,7 +22,6 @@
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
-#include "mbedtls/base64.h"
 #include "nvs_flash.h"
 #include "sdkconfig.h"
 #include "voiceprint_auth.h"
@@ -69,18 +65,7 @@ static const char *TAG = "kws_wakeup";
      * KWS_VOICEPRINT_ENROLL_MAX_SECONDS)
 #define KWS_BUTTON_DEBOUNCE_FRAMES 2
 
-#if CONFIG_KWS_STEREO_DIAGNOSTICS
-#define KWS_AUDIO_TASK_STACK_SIZE    6144
-#define KWS_CAPTURE_TASK_STACK_SIZE  6144
-#define KWS_CAPTURE_TASK_PRIORITY    2
-#define KWS_COMMAND_TASK_STACK_SIZE  3072
-#define KWS_COMMAND_TASK_PRIORITY    3
-#define KWS_CAPTURE_B64_INPUT_BYTES  384
-#define KWS_CAPTURE_B64_OUTPUT_BYTES 512
-#define KWS_CAPTURE_CLIP_THRESHOLD   32760
-#else
 #define KWS_AUDIO_TASK_STACK_SIZE    4096
-#endif
 
 typedef enum {
     KWS_WS_EVENT_CONNECTED = 0,
@@ -134,17 +119,6 @@ typedef struct {
     } data;
 } kws_voiceprint_event_t;
 
-#if CONFIG_KWS_STEREO_DIAGNOSTICS
-typedef enum {
-    KWS_CAPTURE_IDLE = 0,
-    KWS_CAPTURE_WAIT_PROMPT,
-    KWS_CAPTURE_RUNNING,
-    KWS_CAPTURE_READY,
-    KWS_CAPTURE_EXPORTING,
-    KWS_CAPTURE_DONE,
-} kws_capture_state_t;
-#endif
-
 static EventGroupHandle_t s_state_bits;
 static QueueHandle_t s_ws_event_queue;
 static QueueHandle_t s_wakeup_event_queue;
@@ -155,10 +129,6 @@ static SemaphoreHandle_t s_recent_pcm_mutex;
 static TaskHandle_t s_kws_task;
 static TaskHandle_t s_audio_task;
 static TaskHandle_t s_voiceprint_task;
-#if CONFIG_KWS_STEREO_DIAGNOSTICS
-static TaskHandle_t s_capture_task;
-static TaskHandle_t s_command_task;
-#endif
 static esp_websocket_client_handle_t s_ws_client;
 static esp_event_handler_instance_t s_wifi_event_instance;
 static esp_event_handler_instance_t s_ip_event_instance;
@@ -175,69 +145,6 @@ static volatile bool s_voiceprint_enrolled;
 static int s_enroll_button_stable_level = 1;
 static int s_enroll_button_candidate_level = 1;
 static uint8_t s_enroll_button_candidate_frames;
-#if CONFIG_KWS_STEREO_DIAGNOSTICS
-static uint8_t *s_capture_buffer;
-static size_t s_capture_capacity_bytes;
-static volatile size_t s_capture_fill_bytes;
-static volatile kws_capture_state_t s_capture_state;
-static volatile bool s_capture_requested;
-static TickType_t s_capture_prompt_tick;
-static portMUX_TYPE s_capture_lock = portMUX_INITIALIZER_UNLOCKED;
-#endif
-
-#if CONFIG_KWS_STEREO_DIAGNOSTICS
-static void kws_capture_arm(void)
-{
-    bool armed = false;
-    TickType_t prompt_tick =
-        xTaskGetTickCount() + pdMS_TO_TICKS(CONFIG_KWS_STEREO_CAPTURE_DELAY_MS);
-    portENTER_CRITICAL(&s_capture_lock);
-    if (s_capture_buffer && s_capture_state == KWS_CAPTURE_IDLE) {
-        s_capture_fill_bytes = 0;
-        s_capture_prompt_tick = prompt_tick;
-        s_capture_requested = false;
-        s_capture_state = KWS_CAPTURE_WAIT_PROMPT;
-        armed = true;
-    }
-    portEXIT_CRITICAL(&s_capture_lock);
-
-    if (armed) {
-        ESP_LOGI(TAG,
-                 "stereo capture armed: send CAPTURE or wait %d ms, duration=%d s",
-                 CONFIG_KWS_STEREO_CAPTURE_DELAY_MS,
-                 CONFIG_KWS_STEREO_CAPTURE_SECONDS);
-    }
-}
-
-static void kws_capture_request(void)
-{
-    bool accepted = false;
-    portENTER_CRITICAL(&s_capture_lock);
-    if (s_capture_state == KWS_CAPTURE_WAIT_PROMPT) {
-        s_capture_requested = true;
-        accepted = true;
-    }
-    portEXIT_CRITICAL(&s_capture_lock);
-
-    if (accepted) {
-        ESP_LOGI(TAG, "CAPTURE command accepted");
-    } else {
-        ESP_LOGW(TAG, "CAPTURE command ignored; diagnostic is not armed");
-    }
-}
-
-static void kws_capture_cancel_waiting(void)
-{
-    portENTER_CRITICAL(&s_capture_lock);
-    if (s_capture_state == KWS_CAPTURE_WAIT_PROMPT) {
-        s_capture_state = KWS_CAPTURE_IDLE;
-        s_capture_fill_bytes = 0;
-        s_capture_requested = false;
-    }
-    portEXIT_CRITICAL(&s_capture_lock);
-}
-#endif
-
 static void kws_text_message_reset(void)
 {
     memset(&s_text_message, 0, sizeof(s_text_message));
@@ -271,9 +178,6 @@ static void kws_handle_server_message(const char *data, size_t length)
     if (strcmp(type, "session_started") == 0) {
         xEventGroupSetBits(s_state_bits, KWS_WS_STREAMING_BIT);
         ESP_LOGI(TAG, "KWS session started, 200 ms PCM upload enabled");
-#if CONFIG_KWS_STEREO_DIAGNOSTICS
-        kws_capture_arm();
-#endif
     } else if (strcmp(type, "listening") == 0) {
         const cJSON *audio_seconds =
             cJSON_GetObjectItemCaseSensitive(root, "audio_seconds");
@@ -527,9 +431,6 @@ static esp_err_t kws_websocket_open(void)
 static void kws_websocket_close(void)
 {
     xEventGroupClearBits(s_state_bits, KWS_WS_STREAMING_BIT);
-#if CONFIG_KWS_STEREO_DIAGNOSTICS
-    kws_capture_cancel_waiting();
-#endif
     if (!s_ws_client) {
         return;
     }
@@ -933,239 +834,15 @@ static bool kws_send_pcm_frame(const uint8_t *pcm, size_t bytes)
     return true;
 }
 
-#if CONFIG_KWS_STEREO_DIAGNOSTICS
-static void kws_capture_log_channel_stats(const int16_t *stereo,
-                                          size_t stereo_frames,
-                                          size_t channel,
-                                          const char *name)
-{
-    int16_t min_sample = INT16_MAX;
-    int16_t max_sample = INT16_MIN;
-    int16_t previous = 0;
-    int64_t sum = 0;
-    uint64_t sum_squares = 0;
-    uint32_t clipping = 0;
-    uint32_t zero_crossings = 0;
-    int32_t peak = 0;
-
-    for (size_t frame = 0; frame < stereo_frames; ++frame) {
-        int16_t sample =
-            stereo[frame * ES8311_STEREO_CHANNELS + channel];
-        if (sample < min_sample) {
-            min_sample = sample;
-        }
-        if (sample > max_sample) {
-            max_sample = sample;
-        }
-        int32_t magnitude = sample == INT16_MIN ? 32768
-                                                : (sample < 0 ? -sample : sample);
-        if (magnitude > peak) {
-            peak = magnitude;
-        }
-        if (magnitude >= KWS_CAPTURE_CLIP_THRESHOLD) {
-            clipping++;
-        }
-        if (frame > 0
-            && ((previous < 0 && sample >= 0)
-                || (previous >= 0 && sample < 0))) {
-            zero_crossings++;
-        }
-        previous = sample;
-        sum += sample;
-        sum_squares += (uint64_t)((int64_t)sample * sample);
-    }
-
-    double mean = stereo_frames > 0 ? (double)sum / stereo_frames : 0.0;
-    double raw_power =
-        stereo_frames > 0 ? (double)sum_squares / stereo_frames : 0.0;
-    double ac_power = raw_power - mean * mean;
-    if (ac_power < 0.0) {
-        ac_power = 0.0;
-    }
-    double raw_rms = sqrt(raw_power);
-    double ac_rms = sqrt(ac_power);
-    double ac_db = ac_rms > 0.0 ? 20.0 * log10(ac_rms / 32768.0) : -160.0;
-    double peak_db = peak > 0 ? 20.0 * log10((double)peak / 32768.0) : -160.0;
-    double zcr_percent =
-        stereo_frames > 1
-            ? (double)zero_crossings * 100.0 / (stereo_frames - 1)
-            : 0.0;
-
-    ESP_LOGI(TAG,
-             "%s: min=%d max=%d mean=%.1f raw_rms=%.1f "
-             "ac_rms=%.1f(%+.1fdBFS) peak=%ld(%+.1fdBFS) "
-             "clip=%lu zcr=%lu(%.1f%%)",
-             name, min_sample, max_sample, mean, raw_rms, ac_rms, ac_db,
-             (long)peak, peak_db, (unsigned long)clipping,
-             (unsigned long)zero_crossings, zcr_percent);
-}
-
-static void kws_capture_export_task(void *arg)
-{
-    (void)arg;
-    uint8_t encoded[KWS_CAPTURE_B64_OUTPUT_BYTES + 1];
-
-    while (true) {
-        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-        if (!s_capture_buffer || s_capture_state != KWS_CAPTURE_READY) {
-            continue;
-        }
-
-        s_capture_state = KWS_CAPTURE_EXPORTING;
-        const size_t bytes = s_capture_fill_bytes;
-        const size_t stereo_frames =
-            bytes / (ES8311_STEREO_CHANNELS * sizeof(int16_t));
-        const int16_t *stereo = (const int16_t *)s_capture_buffer;
-
-        ESP_LOGI(TAG, "stereo capture complete: %u bytes, %u frames",
-                 (unsigned)bytes, (unsigned)stereo_frames);
-        kws_capture_log_channel_stats(stereo, stereo_frames, 0, "MIC LEFT ");
-        kws_capture_log_channel_stats(stereo, stereo_frames, 1, "MIC RIGHT");
-        ESP_LOGI(TAG, "Base64 export started; KWS audio capture remains active");
-
-        printf("KWS_STEREO_B64_BEGIN bytes=%u sample_rate=%u channels=%u "
-               "bits=%u chunk_bytes=%u\n",
-               (unsigned)bytes, ES8311_SAMPLE_RATE_HZ,
-               ES8311_STEREO_CHANNELS, ES8311_BITS_PER_SAMPLE,
-               KWS_CAPTURE_B64_INPUT_BYTES);
-
-        size_t offset = 0;
-        uint32_t chunk_index = 0;
-        bool export_ok = true;
-        while (offset < bytes) {
-            size_t input_bytes = bytes - offset;
-            if (input_bytes > KWS_CAPTURE_B64_INPUT_BYTES) {
-                input_bytes = KWS_CAPTURE_B64_INPUT_BYTES;
-            }
-
-            size_t encoded_bytes = 0;
-            int ret = mbedtls_base64_encode(
-                encoded, sizeof(encoded), &encoded_bytes,
-                s_capture_buffer + offset, input_bytes);
-            if (ret != 0) {
-                ESP_LOGE(TAG, "Base64 encode failed at offset=%u: -0x%04x",
-                         (unsigned)offset, (unsigned)-ret);
-                export_ok = false;
-                break;
-            }
-            encoded[encoded_bytes] = '\0';
-            printf("KWS_STEREO_B64 %05lu %s\n",
-                   (unsigned long)chunk_index, (char *)encoded);
-            fflush(stdout);
-            offset += input_bytes;
-            chunk_index++;
-            vTaskDelay(pdMS_TO_TICKS(1));
-        }
-
-        printf("KWS_STEREO_B64_END chunks=%lu bytes=%u status=%s\n",
-               (unsigned long)chunk_index, (unsigned)offset,
-               export_ok ? "ok" : "error");
-        fflush(stdout);
-        s_capture_state = KWS_CAPTURE_DONE;
-        ESP_LOGI(TAG, "Base64 export finished: chunks=%lu status=%s",
-                 (unsigned long)chunk_index, export_ok ? "ok" : "error");
-    }
-}
-
-static void kws_capture_collect(const int16_t *stereo, size_t bytes)
-{
-    bool prompt_now = false;
-    TickType_t now = xTaskGetTickCount();
-
-    portENTER_CRITICAL(&s_capture_lock);
-    if (s_capture_state == KWS_CAPTURE_WAIT_PROMPT
-        && (s_capture_requested
-            || (int32_t)(now - s_capture_prompt_tick) >= 0)) {
-        s_capture_fill_bytes = 0;
-        s_capture_requested = false;
-        s_capture_state = KWS_CAPTURE_RUNNING;
-        prompt_now = true;
-    }
-    portEXIT_CRITICAL(&s_capture_lock);
-
-    if (prompt_now) {
-        ESP_LOGW(TAG, "=== SPEAK NOW: say 你好鹰老师 ===");
-    }
-    if (s_capture_state != KWS_CAPTURE_RUNNING) {
-        return;
-    }
-
-    size_t remaining = s_capture_capacity_bytes - s_capture_fill_bytes;
-    size_t copy_bytes = bytes < remaining ? bytes : remaining;
-    memcpy(s_capture_buffer + s_capture_fill_bytes, stereo, copy_bytes);
-    s_capture_fill_bytes += copy_bytes;
-
-    if (s_capture_fill_bytes >= s_capture_capacity_bytes) {
-        portENTER_CRITICAL(&s_capture_lock);
-        s_capture_state = KWS_CAPTURE_READY;
-        portEXIT_CRITICAL(&s_capture_lock);
-        ESP_LOGI(TAG, "stereo capture buffered; scheduling low-priority export");
-        xTaskNotifyGive(s_capture_task);
-    }
-}
-
-static void kws_command_task(void *arg)
-{
-    (void)arg;
-    char command[24];
-    size_t length = 0;
-
-    while (true) {
-        int ch = getchar();
-        if (ch == EOF) {
-            clearerr(stdin);
-            vTaskDelay(pdMS_TO_TICKS(20));
-            continue;
-        }
-        if (ch == '\r') {
-            continue;
-        }
-        if (ch == '\n') {
-            command[length] = '\0';
-            if (strcmp(command, "CAPTURE") == 0) {
-                kws_capture_request();
-            }
-            length = 0;
-            continue;
-        }
-        if (length + 1 < sizeof(command)) {
-            command[length++] = (char)ch;
-        } else {
-            length = 0;
-        }
-    }
-}
-#endif
-
 static void kws_audio_task(void *arg)
 {
     (void)arg;
     kws_pcm_frame_t frame;
-#if CONFIG_KWS_STEREO_DIAGNOSTICS
-    int16_t stereo_frame[ES8311_STEREO_FRAME_BYTES / sizeof(int16_t)];
-#endif
 
     while (true) {
         size_t bytes_read = 0;
-#if CONFIG_KWS_STEREO_DIAGNOSTICS
-        esp_err_t ret = es8311_read_stereo_pcm(
-            stereo_frame, sizeof(stereo_frame), &bytes_read);
-        if (ret == ESP_OK && bytes_read == sizeof(stereo_frame)) {
-            kws_capture_collect(stereo_frame, bytes_read);
-
-            const size_t mono_sample_count =
-                ES8311_PCM_FRAME_BYTES / sizeof(int16_t);
-            int16_t *mono = (int16_t *)frame.data;
-            for (size_t sample = 0; sample < mono_sample_count; ++sample) {
-                mono[sample] =
-                    stereo_frame[sample * ES8311_STEREO_CHANNELS];
-            }
-            bytes_read = sizeof(frame.data);
-        }
-#else
         esp_err_t ret =
             es8311_read_pcm(frame.data, sizeof(frame.data), &bytes_read);
-#endif
 
         if (ret == ESP_OK && bytes_read == sizeof(frame.data)) {
             kws_voiceprint_collect_audio(frame.data, bytes_read);
@@ -1398,7 +1075,6 @@ static void kws_wifi_event_handler(void *arg, esp_event_base_t event_base,
     (void)arg;
 
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
-        esp_wifi_connect();
         return;
     }
 
@@ -1483,7 +1159,13 @@ static esp_err_t kws_wifi_init(void)
         ret = esp_wifi_start();
     }
     if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "Wi-Fi station started: SSID=%s", CONFIG_KWS_WIFI_SSID);
+        ret = esp_wifi_set_band_mode(WIFI_BAND_MODE_AUTO);
+    }
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG,
+                 "Wi-Fi station started in 2.4/5 GHz auto mode: SSID=%s",
+                 CONFIG_KWS_WIFI_SSID);
+        ret = esp_wifi_connect();
     }
     return ret;
 }
@@ -1511,7 +1193,14 @@ esp_err_t kws_wakeup_start(void)
         return ESP_ERR_NO_MEM;
     }
 
-    esp_err_t ret = kws_wifi_init();
+    esp_err_t ret = es8311_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "ES8311 init failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    ESP_LOGI(TAG, "live ES8311 capture enabled");
+
+    ret = kws_wifi_init();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Wi-Fi init failed: %s", esp_err_to_name(ret));
         return ret;
@@ -1574,46 +1263,6 @@ esp_err_t kws_wakeup_start(void)
                  "=== VOICEPRINT REGISTRATION REQUIRED: hold GPIO%d and speak, then release ===",
                  BOARD_ENROLL_BUTTON_PIN);
     }
-
-    ret = es8311_init();
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "ES8311 init failed: %s", esp_err_to_name(ret));
-        return ret;
-    }
-    ESP_LOGI(TAG, "live ES8311 capture enabled");
-
-#if CONFIG_KWS_STEREO_DIAGNOSTICS
-    s_capture_capacity_bytes =
-        (size_t)CONFIG_KWS_STEREO_CAPTURE_SECONDS
-        * ES8311_SAMPLE_RATE_HZ
-        * ES8311_STEREO_CHANNELS
-        * (ES8311_BITS_PER_SAMPLE / 8);
-    s_capture_buffer =
-        heap_caps_malloc(s_capture_capacity_bytes,
-                         MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    if (!s_capture_buffer) {
-        ESP_LOGE(TAG, "stereo capture alloc failed (%u KiB)",
-                 (unsigned)(s_capture_capacity_bytes / 1024));
-        return ESP_ERR_NO_MEM;
-    }
-    s_capture_state = KWS_CAPTURE_IDLE;
-    ESP_LOGI(TAG, "stereo capture buffer ready in PSRAM: %u KiB",
-             (unsigned)(s_capture_capacity_bytes / 1024));
-
-    if (xTaskCreate(kws_capture_export_task, "kws_capture",
-                    KWS_CAPTURE_TASK_STACK_SIZE, NULL,
-                    KWS_CAPTURE_TASK_PRIORITY, &s_capture_task) != pdPASS) {
-        s_capture_task = NULL;
-        return ESP_ERR_NO_MEM;
-    }
-
-    if (xTaskCreate(kws_command_task, "kws_command",
-                    KWS_COMMAND_TASK_STACK_SIZE, NULL,
-                    KWS_COMMAND_TASK_PRIORITY, &s_command_task) != pdPASS) {
-        s_command_task = NULL;
-        return ESP_ERR_NO_MEM;
-    }
-#endif
 
     if (xTaskCreate(kws_voiceprint_worker_task, "voiceprint",
                     KWS_VOICEPRINT_TASK_STACK_SIZE, NULL,

@@ -1,39 +1,30 @@
 # Board pin configuration
 
-This component is the single source of truth for ESP32-S3 peripheral ports and
-GPIO assignments. The voiceprint input definitions were migrated from SonKey.
-The `kws_wakeup` component owns the GPIO1 hold-to-record registration state
-machine and combines voiceprint verification with KWS before publishing wakeup.
+This component is the single source of truth for ESP32-C5 peripheral ports and
+GPIO assignments. This branch targets an ESP32-C5-WROOM-1 MCN16R8 board.
 
-## Voiceprint and KWS pins
+## Phase 1: voice-only bring-up
 
-| Function | GPIO |
-| --- | --- |
-| Voiceprint record/enroll button | GPIO1 |
-| Registration select/back button | GPIO42 |
-| EC11 phase A / B | GPIO41 / GPIO39 |
-| Confirm button | GPIO40 |
-| Admin button | GPIO8 |
-| ES8311 I2C SDA / SCL | GPIO17 / GPIO16 |
-| ES8311 I2S MCLK / BCLK / WS | GPIO20 / GPIO4 / GPIO5 |
-| ESP32 I2S TX GPIO18 -> ES8311 DIN | GPIO18 |
-| ES8311 DOUT -> ESP32 I2S RX GPIO19 | GPIO19 |
-| Red / green / yellow LED | GPIO3 / GPIO2 / GPIO7 |
+The first C5 milestone validates ES8311 capture, Wi-Fi, KWS, voiceprint
+registration, and voiceprint verification. Display, LEDs, the SG90, and
+optional panel controls remain disconnected and use `GPIO_NUM_NC`.
+
+| Function | C5 GPIO | Notes |
+| --- | ---: | --- |
+| Voiceprint record/enroll button | GPIO24 | Button connects GPIO24 to GND; internal pull-up |
+| ES8311 I2C SDA / SCL | GPIO7 / GPIO6 | Validated on this board |
+| ES8311 I2S MCLK / BCLK / WS | GPIO0 / GPIO4 / GPIO5 | GPIO0 has been validated as MCLK |
+| C5 I2S TX -> ES8311 DIN | GPIO2 | Do not add external pull circuits |
+| ES8311 DOUT -> C5 I2S RX | GPIO3 | Do not add external pull circuits |
+| UART console | GPIO11 / GPIO12 | Reserved for the CH340 serial interface |
 
 KWS has no dedicated GPIO. It consumes PCM captured from ES8311 over I2S.
-GPIO20 carries MCLK while GPIO19 receives ES8311 SDOUT. These are also the
-ESP32-S3 native USB pins, so native USB must not be used while audio capture
-is active.
-GPIO39, GPIO40, and GPIO41 share the external JTAG function, so external JTAG
-must not be used while those inputs are active.
+Keep the I2S directions unchanged: C5 DOUT connects to ES8311 DIN, and ES8311
+DOUT connects to C5 DIN.
 
-## Resolved conflicts
+## Later peripherals
 
-The previous LED mapping reused two ES8311 pins:
-
-- Green LED moved from GPIO16 (ES8311 I2C SCL) to GPIO2.
-- Yellow LED moved from GPIO18 (ESP32 I2S TX to ES8311 DIN) to GPIO7.
-
-The physical LED signal wires must be moved to GPIO2 and GPIO7 before flashing
-this firmware. GPIO3, currently used by the red LED, is an ESP32-S3 strapping
-pin and should not be externally forced during reset.
+The display, LEDs, actuator, and optional buttons must receive a separate C5
+pin-budget review before assignment. Do not use GPIO11/GPIO12 during porting,
+and do not assign the C5 strapping pins GPIO25 through GPIO28 until reset
+behavior has been tested with the final circuit.

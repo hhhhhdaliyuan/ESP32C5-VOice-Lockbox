@@ -25,6 +25,18 @@ static bool s_initialized = false;
 
 /* ---------- 底层 GPIO 操作 ---------- */
 
+static bool led_pins_assigned(void)
+{
+    return BOARD_LED_RED_GPIO != GPIO_NUM_NC
+           && BOARD_LED_GREEN_GPIO != GPIO_NUM_NC
+           && BOARD_LED_YELLOW_GPIO != GPIO_NUM_NC;
+}
+
+static uint64_t led_gpio_bit(gpio_num_t pin)
+{
+    return pin == GPIO_NUM_NC ? 0 : 1ULL << pin;
+}
+
 static void led_set(uint8_t red, uint8_t green, uint8_t yellow)
 {
     gpio_set_level(BOARD_LED_RED_GPIO,    red);
@@ -157,11 +169,16 @@ esp_err_t led_control_init(void)
         return ESP_OK;
     }
 
+    if (!led_pins_assigned()) {
+        ESP_LOGW(TAG, "LED GPIOs are not assigned for this board");
+        return ESP_ERR_NOT_SUPPORTED;
+    }
+
     /* 配置 GPIO */
     gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << BOARD_LED_RED_GPIO)
-                      | (1ULL << BOARD_LED_GREEN_GPIO)
-                      | (1ULL << BOARD_LED_YELLOW_GPIO),
+        .pin_bit_mask = led_gpio_bit(BOARD_LED_RED_GPIO)
+                      | led_gpio_bit(BOARD_LED_GREEN_GPIO)
+                      | led_gpio_bit(BOARD_LED_YELLOW_GPIO),
         .mode = GPIO_MODE_OUTPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,

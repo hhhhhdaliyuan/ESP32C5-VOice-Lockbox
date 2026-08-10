@@ -1,11 +1,15 @@
 #include "chest_controller.h"
 
-#include "board_config.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "kws_wakeup.h"
+#include "sdkconfig.h"
+
+#if CONFIG_CHEST_ENABLE_SERVO
+#include "board_config.h"
 #include "servo.h"
+#endif
 
 static const char *TAG = "chest_controller";
 
@@ -13,16 +17,22 @@ static const char *TAG = "chest_controller";
 #define CHEST_CONTROLLER_TASK_PRIORITY 4
 #define CHEST_CONTROLLER_EVENT_WAIT_MS 1000
 
+#if CONFIG_CHEST_ENABLE_SERVO
 #define CHEST_SERVO_MIN_PULSE_US 500
 #define CHEST_SERVO_MAX_PULSE_US 2500
 #define CHEST_SERVO_OPEN_STEP_DELAY_MS 20
+#endif
 
 static TaskHandle_t s_controller_task;
 
 static void chest_controller_open_lid(const kws_wakeup_event_t *event)
 {
+#if CONFIG_CHEST_ENABLE_SERVO
     ESP_LOGI(TAG, "opening lid for verified keyword: %s", event->keyword);
     servo_open(CHEST_SERVO_OPEN_STEP_DELAY_MS);
+#else
+    ESP_LOGI(TAG, "verified keyword: %s (actuator disabled)", event->keyword);
+#endif
 }
 
 static void chest_controller_handle_panbao(
@@ -82,14 +92,20 @@ esp_err_t chest_controller_start(void)
         return ESP_OK;
     }
 
-    esp_err_t ret = servo_init(BOARD_SG90_PWM_GPIO,
-                               CHEST_SERVO_MIN_PULSE_US,
-                               CHEST_SERVO_MAX_PULSE_US);
+    esp_err_t ret;
+
+#if CONFIG_CHEST_ENABLE_SERVO
+    ret = servo_init(BOARD_SG90_PWM_GPIO,
+                     CHEST_SERVO_MIN_PULSE_US,
+                     CHEST_SERVO_MAX_PULSE_US);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "lid servo init failed: %s", esp_err_to_name(ret));
         return ret;
     }
     ESP_LOGI(TAG, "lid servo ready on GPIO%d", BOARD_SG90_PWM_GPIO);
+#else
+    ESP_LOGI(TAG, "phase 1 voice-only mode: lid actuator disabled");
+#endif
 
     ret = kws_wakeup_start();
     if (ret != ESP_OK) {
