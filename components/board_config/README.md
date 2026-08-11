@@ -12,6 +12,7 @@ disconnected and use `GPIO_NUM_NC`.
 
 | Function | C5 GPIO | Notes |
 | --- | ---: | --- |
+| Lid close button | GPIO1 | Button connects GPIO1 to GND; internal pull-up |
 | Voiceprint record/enroll button | GPIO24 | Button connects GPIO24 to GND; internal pull-up |
 | ES8311 I2C SDA / SCL | GPIO7 / GPIO6 | Validated on this board |
 | ES8311 I2S MCLK / BCLK / WS | GPIO0 / GPIO4 / GPIO5 | GPIO0 has been validated as MCLK |
@@ -38,6 +39,17 @@ Do not power the SG90 from the C5 3.3 V rail. The external 5 V supply and the
 C5 must share GND. The controller keeps the lid closed at boot and calls
 `servo_open()` only after KWS and voiceprint verification both succeed.
 
+## Lid close button wiring
+
+| Button side | Connect to |
+| --- | --- |
+| One side | C5 GPIO1 |
+| Other side | C5 GND |
+
+The firmware uses the internal pull-up, so the button is active when pressed
+(GPIO1 reads low). The close command is ignored unless the current servo state
+is `OPENED`; voiceprint enrollment continues to use its separate GPIO24 button.
+
 ## GC9A01 wiring
 
 | GC9A01 label | Connect to |
@@ -59,7 +71,8 @@ on the MCN16R8 board it is the module's PSRAM chip-select signal.
 At boot the display reports `LID: CLOSED` and `VOICE: STARTING`. After the
 voice service starts, it reports `VOICE: LISTENING`. A verified wakeup shows
 `OPENING` and then `OPEN`; `OPEN` confirms the servo command completed, not a
-physical lid sensor reading.
+physical lid sensor reading. A valid GPIO1 button press shows `CLOSING` and
+then returns to `CLOSED`.
 
 ## Later peripherals
 

@@ -31,6 +31,16 @@ void display_status_show_opening(void);
 void display_status_show_opened(void);
 
 /**
+ * @brief Show that the local button is closing the lid.
+ */
+void display_status_show_closing(void);
+
+/**
+ * @brief Show the normal voice-listening and closed-lid state.
+ */
+void display_status_show_closed(void);
+
+/**
  * @brief Show a short startup error while keeping the current lid state.
  */
 void display_status_show_error(const char *message);
