@@ -32,9 +32,9 @@ extern "C" {
 #define GC9A01_DC_GPIO                BOARD_GC9A01_DC_GPIO
 #define GC9A01_SPI_CS_GPIO            BOARD_GC9A01_SPI_CS_GPIO
 #define GC9A01_RST_GPIO               BOARD_GC9A01_RST_GPIO
-#define GC9A01_SPI_CLOCK_HZ           60000000
+#define GC9A01_SPI_CLOCK_HZ           20000000
 #define GC9A01_SPI_MODE               0U
-#define GC9A01_SPI_MAX_TRANSFER_BYTES (GC9A01_WIDTH * GC9A01_HEIGHT * 2U)
+#define GC9A01_SPI_MAX_TRANSFER_BYTES 64U
 /** @} */
 
 /**

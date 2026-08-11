@@ -6,6 +6,10 @@
 #include "kws_wakeup.h"
 #include "sdkconfig.h"
 
+#if CONFIG_CHEST_ENABLE_DISPLAY
+#include "display_status.h"
+#endif
+
 #if CONFIG_CHEST_ENABLE_SERVO
 #include "board_config.h"
 #include "servo.h"
@@ -27,11 +31,19 @@ static TaskHandle_t s_controller_task;
 
 static void chest_controller_open_lid(const kws_wakeup_event_t *event)
 {
+#if CONFIG_CHEST_ENABLE_DISPLAY
+    display_status_show_opening();
+#endif
+
 #if CONFIG_CHEST_ENABLE_SERVO
     ESP_LOGI(TAG, "opening lid for verified keyword: %s", event->keyword);
     servo_open(CHEST_SERVO_OPEN_STEP_DELAY_MS);
 #else
     ESP_LOGI(TAG, "verified keyword: %s (actuator disabled)", event->keyword);
+#endif
+
+#if CONFIG_CHEST_ENABLE_DISPLAY
+    display_status_show_opened();
 #endif
 }
 
@@ -99,6 +111,13 @@ esp_err_t chest_controller_start(void)
 
     esp_err_t ret;
 
+#if CONFIG_CHEST_ENABLE_DISPLAY
+    ret = display_status_init();
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "status display unavailable: %s", esp_err_to_name(ret));
+    }
+#endif
+
 #if CONFIG_CHEST_ENABLE_SERVO
     ret = servo_init(BOARD_SG90_PWM_GPIO,
                      CHEST_SERVO_MIN_PULSE_US,
@@ -114,9 +133,16 @@ esp_err_t chest_controller_start(void)
 
     ret = kws_wakeup_start();
     if (ret != ESP_OK) {
+#if CONFIG_CHEST_ENABLE_DISPLAY
+        display_status_show_error("KWS ERROR");
+#endif
         ESP_LOGE(TAG, "KWS wakeup start failed: %s", esp_err_to_name(ret));
         return ret;
     }
+
+#if CONFIG_CHEST_ENABLE_DISPLAY
+    display_status_show_listening();
+#endif
 
     if (xTaskCreate(chest_controller_task, "chest_ctrl",
                     CHEST_CONTROLLER_TASK_STACK_SIZE, NULL,

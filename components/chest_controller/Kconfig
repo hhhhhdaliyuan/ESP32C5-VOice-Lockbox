@@ -8,4 +8,12 @@ config CHEST_ENABLE_SERVO
         voiceprint event. The C5 servo branch enables this in sdkconfig.defaults
         after the PWM wiring and external 5 V supply are connected.
 
+config CHEST_ENABLE_DISPLAY
+    bool "Enable GC9A01 status display"
+    default n
+    help
+        Initialize the GC9A01 display and show the voice-listening state plus
+        the lid command state. The display branch enables this in
+        sdkconfig.defaults after the SPI wiring is connected.
+
 endmenu

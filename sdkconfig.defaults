@@ -16,6 +16,7 @@ CONFIG_SPIRAM_USE_CAPS_ALLOC=y
 
 # Phase 2 enables the SG90 only for a verified KWS + voiceprint wakeup event.
 CONFIG_CHEST_ENABLE_SERVO=y
+CONFIG_CHEST_ENABLE_DISPLAY=y
 
 CONFIG_KWS_SERVER_URI="ws://114.132.243.95:80/v1/kws/listen"
 CONFIG_KWS_PRODUCT_ID="eagle"

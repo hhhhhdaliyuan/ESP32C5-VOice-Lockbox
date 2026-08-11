@@ -60,7 +60,11 @@ esp_err_t common_spi_bus_init(const common_spi_bus_config_t *config)
         .max_transfer_sz = config->max_transfer_bytes,
         .flags = SPICOMMON_BUSFLAG_MASTER,
     };
-    esp_err_t ret = spi_bus_initialize(config->host, &bus_config, SPI_DMA_CH_AUTO);
+    /*
+     * The ESP32-C5 display path uses the hardware FIFO rather than SPI DMA.
+     * Transfers larger than the FIFO are split by common_spi_write().
+     */
+    esp_err_t ret = spi_bus_initialize(config->host, &bus_config, SPI_DMA_DISABLED);
     if (ret != ESP_OK) {
         return ret;
     }
@@ -122,21 +126,30 @@ esp_err_t common_spi_write(const common_spi_device_t *device, const void *data, 
     if (!device->handle || !device->mutex) {
         return ESP_ERR_INVALID_STATE;
     }
-    if (len > device->max_transfer_bytes) {
-        return ESP_ERR_INVALID_SIZE;
-    }
-
-    spi_transaction_t transaction = {
-        /* ESP-IDF 使用 bit 表示事务长度，通用接口对调用方保持 byte 语义。 */
-        .length = len * 8,
-        .tx_buffer = data,
-    };
     /* polling 传输期间独占该设备，返回前才允许下一任务复用其句柄。 */
     if (xSemaphoreTake(device->mutex, portMAX_DELAY) != pdTRUE) {
         return ESP_FAIL;
     }
 
-    esp_err_t ret = spi_device_polling_transmit(device->handle, &transaction);
+    const uint8_t *cursor = data;
+    size_t remaining = len;
+    esp_err_t ret = ESP_OK;
+    while (remaining > 0) {
+        size_t chunk_len = remaining > device->max_transfer_bytes ?
+                               device->max_transfer_bytes : remaining;
+        spi_transaction_t transaction = {
+            /* ESP-IDF uses bits; this interface keeps bytes for its callers. */
+            .length = chunk_len * 8,
+            .tx_buffer = cursor,
+        };
+        ret = spi_device_polling_transmit(device->handle, &transaction);
+        if (ret != ESP_OK) {
+            break;
+        }
+        cursor += chunk_len;
+        remaining -= chunk_len;
+    }
+
     xSemaphoreGive(device->mutex);
     return ret;
 }

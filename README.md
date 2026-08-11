@@ -2,7 +2,8 @@
 
 基于 ESP32-C5-WROOM-1 MCN16R8 的智能宝盒固件。当前已启用 ES8311
 实时音频采集、云端关键词识别、按键声纹注册，以及关键词与声纹双重验证。
-关键词和声纹同时通过后，SG90 才会执行开盒动作；显示屏和 LED 将继续分阶段迁移。
+关键词和声纹同时通过后，SG90 才会执行开盒动作；GC9A01 显示屏同步显示
+正常监听、开盒中和已开盒状态，LED 将继续分阶段迁移。
 
 ## 当前状态
 
@@ -15,10 +16,14 @@
 - 只有关键词与声纹同时通过，才向业务层发布最终唤醒事件。
 - 最终唤醒事件触发 SG90 从 0° 慢速旋转到 150°，完成开盒；该链路已于 2026-08-11
   在 C5 实机验证。没有最终唤醒事件不会开盒。
+- GC9A01 在启动后显示 `VOICE: LISTENING` 与 `LID: CLOSED`；双重验证成功时依次显示
+  `OPENING` 与 `OPEN`。
 - 声纹注册状态写入 NVS，设备重启后自动恢复双重验证监听。
 - 网络异常、WebSocket 中断和音频上传异常自动重建监听会话。
 
-`chest_controller` 业务任务负责消费最终唤醒事件并驱动 SG90 开盒，`app_main()` 只负责启动控制器。GC9A01 和三色 LED 的底层组件已经存在，但尚未绑定监听、验证及开盒状态。
+`chest_controller` 业务任务负责消费最终唤醒事件、驱动 SG90 开盒，并更新
+GC9A01 状态。`app_main()` 只负责启动控制器。三色 LED 的底层组件已经存在，
+但尚未绑定业务状态。
 
 ## 双重认证流程
 
@@ -93,6 +98,7 @@ chest_controller: dual-auth wakeup: ...
 | `components/chest_controller/` | 业务任务、关键词动作分发和宝盒外设编排 |
 | `components/board_config/` | 板级 GPIO 和外设资源分配 |
 | `components/gc9a01/` | GC9A01 显示驱动 |
+| `components/display_status/` | GC9A01 的监听和开盒状态界面 |
 | `components/led_control/` | 三色 LED 状态模式 |
 | `components/servo/` | 舵机控制 |
 
@@ -107,11 +113,15 @@ chest_controller: dual-auth wakeup: ...
 | C5 I2S TX -> ES8311 DIN | GPIO2 |
 | ES8311 DOUT -> C5 I2S RX | GPIO3 |
 | 串口日志（CH340） | GPIO11 / GPIO12 |
-| 显示屏 / LED | 暂未分配 |
+| GC9A01 SCLK / MOSI | GPIO8 / GPIO9 |
+| GC9A01 DC / CS / RST | GPIO13 / GPIO14 / GPIO23 |
+| LED | 暂未分配 |
 
 ES8311、按键和其他外设必须共地。SG90 信号线接 GPIO10；红线接独立稳压 5 V，
 黑/棕线接外部电源 GND，且外部电源 GND 必须与 C5 GND 共地。不要使用 C5 的
-3.3 V 给舵机供电。
+3.3 V 给舵机供电。GC9A01 的 `VCC` 与 `BL/BLK` 接 C5 `3V3`，不得接 5 V。
+屏幕显示的 `LID: OPEN` 表示开盒舵机指令已完成；若要检测真实盒盖位置，后续需要
+增加限位开关或霍尔传感器。
 
 ## 项目配置
 
@@ -152,6 +162,6 @@ idf.py -p <PORT> monitor
 
 - 根据机械限位校准 SG90 开盒角度、脉宽和目标角度。
 - 增加闭盒业务动作和触发方式。
-- 接入 GC9A01 和 LED 的监听、验证、成功及失败状态。
+- 接入三色 LED 的监听、验证、成功及失败状态。
 - 增加本地用户管理和声纹删除流程。
 - 增加开合限位、卡滞检测和执行器安全保护。

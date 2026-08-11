@@ -199,7 +199,7 @@ static esp_err_t gc9a01_init_unlocked(void)
     }
 
     if (!s_spi_device.handle) {
-        /* GC9A01 使用独立 CS=GPIO12，因此不会接收其他 SPI 设备的事务。 */
+        /* GC9A01 uses its own CS, so it ignores transactions for other SPI devices. */
         const common_spi_device_config_t device_config = {
             .cs_io_num = BOARD_GC9A01_SPI_CS_GPIO,
             .clock_speed_hz = GC9A01_SPI_CLOCK_HZ,
