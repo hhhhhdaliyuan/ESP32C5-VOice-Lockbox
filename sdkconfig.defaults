@@ -14,9 +14,8 @@ CONFIG_SPIRAM_MODE_QUAD=y
 CONFIG_SPIRAM_SPEED_80M=y
 CONFIG_SPIRAM_USE_CAPS_ALLOC=y
 
-# Phase 1 validates microphone, Wi-Fi, KWS, and voiceprint only.
-# The lid actuator remains disabled until it is wired and tested on C5.
-# CONFIG_CHEST_ENABLE_SERVO is not set
+# Phase 2 enables the SG90 only for a verified KWS + voiceprint wakeup event.
+CONFIG_CHEST_ENABLE_SERVO=y
 
 CONFIG_KWS_SERVER_URI="ws://114.132.243.95:80/v1/kws/listen"
 CONFIG_KWS_PRODUCT_ID="eagle"
