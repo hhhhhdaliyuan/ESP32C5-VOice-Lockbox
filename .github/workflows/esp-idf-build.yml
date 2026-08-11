@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build:
-    name: Build ESP32-S3 firmware
+    name: Build ESP32-C5 firmware
     runs-on: ubuntu-latest
     container: espressif/idf:v5.5.4
 
@@ -24,5 +24,5 @@ jobs:
         shell: bash
         run: |
           . /opt/esp/idf/export.sh
-          idf.py set-target esp32s3
+          idf.py set-target esp32c5
           idf.py build
