@@ -17,7 +17,7 @@ and use `GPIO_NUM_NC`.
 | ES8311 I2S MCLK / BCLK / WS | GPIO0 / GPIO4 / GPIO5 | GPIO0 has been validated as MCLK |
 | C5 I2S TX -> ES8311 DIN | GPIO2 | Do not add external pull circuits |
 | ES8311 DOUT -> C5 I2S RX | GPIO3 | Do not add external pull circuits |
-| SG90 signal | GPIO10 | 50 Hz PWM configured in firmware; awaiting hardware verification |
+| SG90 signal | GPIO10 | 50 Hz PWM; hardware verified on 2026-08-11 |
 | UART console | GPIO11 / GPIO12 | Reserved for the CH340 serial interface |
 
 KWS has no dedicated GPIO. It consumes PCM captured from ES8311 over I2S.
