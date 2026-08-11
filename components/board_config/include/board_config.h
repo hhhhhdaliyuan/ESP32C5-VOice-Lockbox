@@ -49,9 +49,10 @@
 #define BOARD_SG90_PWM_GPIO            GPIO_NUM_10
 
 /*
- * Local voiceprint registration input.
+ * Local button inputs.
  * Buttons connect GPIO to GND and use the internal pull-up.
  */
+#define BOARD_CLOSE_BUTTON_PIN         GPIO_NUM_1
 #define BOARD_ENROLL_BUTTON_PIN        GPIO_NUM_24
 #define BOARD_ENROLL_SELECT_BUTTON_PIN GPIO_NUM_NC
 #define BOARD_EC11_A_GPIO              GPIO_NUM_NC

@@ -1,5 +1,8 @@
 #include "chest_controller.h"
 
+#include <stdbool.h>
+
+#include "driver/gpio.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -19,12 +22,14 @@ static const char *TAG = "chest_controller";
 
 #define CHEST_CONTROLLER_TASK_STACK_SIZE 4096
 #define CHEST_CONTROLLER_TASK_PRIORITY 4
-#define CHEST_CONTROLLER_EVENT_WAIT_MS 1000
+#define CHEST_CONTROLLER_EVENT_WAIT_MS 20
+#define CHEST_CLOSE_BUTTON_DEBOUNCE_MS 30
 
 #if CONFIG_CHEST_ENABLE_SERVO
 #define CHEST_SERVO_MIN_PULSE_US 500
 #define CHEST_SERVO_MAX_PULSE_US 2500
 #define CHEST_SERVO_OPEN_STEP_DELAY_MS 20
+#define CHEST_SERVO_CLOSE_STEP_DELAY_MS 20
 #endif
 
 static TaskHandle_t s_controller_task;
@@ -46,6 +51,52 @@ static void chest_controller_open_lid(const kws_wakeup_event_t *event)
     display_status_show_opened();
 #endif
 }
+
+#if CONFIG_CHEST_ENABLE_SERVO
+static void chest_controller_close_lid(void)
+{
+    if (servo_get_state() != SERVO_STATE_OPENED) {
+        ESP_LOGI(TAG, "close button ignored because lid is already closed");
+        return;
+    }
+
+#if CONFIG_CHEST_ENABLE_DISPLAY
+    display_status_show_closing();
+#endif
+
+    ESP_LOGI(TAG, "closing lid from local button");
+    servo_close(CHEST_SERVO_CLOSE_STEP_DELAY_MS);
+
+#if CONFIG_CHEST_ENABLE_DISPLAY
+    display_status_show_closed();
+#endif
+}
+
+static esp_err_t chest_controller_init_close_button(void)
+{
+    const gpio_config_t config = {
+        .pin_bit_mask = 1ULL << BOARD_CLOSE_BUTTON_PIN,
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+
+    esp_err_t ret = gpio_config(&config);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    ESP_LOGI(TAG, "close button ready on GPIO%d", BOARD_CLOSE_BUTTON_PIN);
+    return ESP_OK;
+}
+
+static bool chest_controller_close_button_pressed(void)
+{
+    return gpio_get_level(BOARD_CLOSE_BUTTON_PIN) ==
+           BOARD_BUTTON_ACTIVE_LEVEL;
+}
+#endif
 
 static void chest_controller_handle_panbao(
     const kws_wakeup_event_t *event)
@@ -89,6 +140,10 @@ static void chest_controller_task(void *arg)
 {
     (void)arg;
 
+#if CONFIG_CHEST_ENABLE_SERVO
+    bool close_button_was_pressed = chest_controller_close_button_pressed();
+#endif
+
     while (true) {
         kws_wakeup_event_t event;
         esp_err_t ret =
@@ -100,6 +155,17 @@ static void chest_controller_task(void *arg)
                      esp_err_to_name(ret));
             vTaskDelay(pdMS_TO_TICKS(100));
         }
+
+#if CONFIG_CHEST_ENABLE_SERVO
+        bool close_button_is_pressed = chest_controller_close_button_pressed();
+        if (close_button_is_pressed && !close_button_was_pressed) {
+            vTaskDelay(pdMS_TO_TICKS(CHEST_CLOSE_BUTTON_DEBOUNCE_MS));
+            if (chest_controller_close_button_pressed()) {
+                chest_controller_close_lid();
+            }
+        }
+        close_button_was_pressed = chest_controller_close_button_pressed();
+#endif
     }
 }
 
@@ -127,6 +193,12 @@ esp_err_t chest_controller_start(void)
         return ret;
     }
     ESP_LOGI(TAG, "lid servo ready on GPIO%d", BOARD_SG90_PWM_GPIO);
+
+    ret = chest_controller_init_close_button();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "close button init failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
 #else
     ESP_LOGI(TAG, "phase 1 voice-only mode: lid actuator disabled");
 #endif

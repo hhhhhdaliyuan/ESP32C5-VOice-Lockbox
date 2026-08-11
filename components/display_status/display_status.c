@@ -116,6 +116,24 @@ void display_status_show_opened(void)
     });
 }
 
+void display_status_show_closing(void)
+{
+    display_status_show(&(display_status_view_t) {
+        .lid = "CLOSING",
+        .voice = "BUTTON",
+        .accent = GC9A01_COLOR_YELLOW,
+    });
+}
+
+void display_status_show_closed(void)
+{
+    display_status_show(&(display_status_view_t) {
+        .lid = "CLOSED",
+        .voice = "LISTENING",
+        .accent = GC9A01_COLOR_GREEN,
+    });
+}
+
 void display_status_show_error(const char *message)
 {
     display_status_show(&(display_status_view_t) {
