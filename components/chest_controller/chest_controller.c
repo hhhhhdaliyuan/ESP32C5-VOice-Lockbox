@@ -54,6 +54,11 @@ static void chest_controller_handle_wakeup(const kws_wakeup_event_t *event)
              event->keyword, event->confidence, event->speaker_id,
              event->voiceprint_score, event->voiceprint_threshold);
 
+    if (event->voiceprint_score < event->voiceprint_threshold) {
+        ESP_LOGW(TAG, "ignoring wakeup event without voiceprint approval");
+        return;
+    }
+
     switch (event->type) {
     case KWS_WAKEUP_KEYWORD_PANBAO:
         chest_controller_handle_panbao(event);

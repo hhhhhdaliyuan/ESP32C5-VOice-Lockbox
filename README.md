@@ -1,8 +1,8 @@
 # ESP32 Chest
 
-基于 ESP32-C5-WROOM-1 MCN16R8 的智能宝盒固件。当前第一阶段只启用 ES8311
+基于 ESP32-C5-WROOM-1 MCN16R8 的智能宝盒固件。当前已启用 ES8311
 实时音频采集、云端关键词识别、按键声纹注册，以及关键词与声纹双重验证。
-显示屏、LED 和舵机将在语音链路稳定后分阶段迁移。
+关键词和声纹同时通过后，SG90 才会执行开盒动作；显示屏和 LED 将继续分阶段迁移。
 
 ## 当前状态
 
@@ -10,10 +10,11 @@
 
 - ES8311 左声道实时采集，格式为 `16 kHz / mono / pcm_s16le`。
 - KWS WebSocket 持续监听 `你好盘宝` 和 `你好鹰老师`。
-- GPIO1 按住录音、松开上传的声纹注册流程。
+- GPIO24 按住录音、松开上传的声纹注册流程。
 - KWS 命中后，使用最近 3 秒 PCM 进行声纹验证。
 - 只有关键词与声纹同时通过，才向业务层发布最终唤醒事件。
-- 最终唤醒事件触发 SG90 从 0° 慢速旋转到 150°，完成开盒。
+- 最终唤醒事件触发 SG90 从 0° 慢速旋转到 150°，完成开盒；该链路已于 2026-08-11
+  在 C5 实机验证。没有最终唤醒事件不会开盒。
 - 声纹注册状态写入 NVS，设备重启后自动恢复双重验证监听。
 - 网络异常、WebSocket 中断和音频上传异常自动重建监听会话。
 
@@ -44,9 +45,9 @@ chest_controller: dual-auth wakeup: ...
 
 ## 声纹注册
 
-注册按键连接在 GPIO1 与 GND 之间，固件启用内部上拉，低电平有效。
+注册按键连接在 GPIO24 与 GND 之间，固件启用内部上拉，低电平有效。
 
-1. 按住 GPIO1 注册按键。
+1. 按住 GPIO24 注册按键。
 2. 对着麦克风说任意内容，不要求包含关键词。
 3. 持续至少 3 秒，建议录制 5 到 8 秒。
 4. 松开按键，固件上传按住期间的 PCM。
@@ -99,19 +100,18 @@ chest_controller: dual-auth wakeup: ...
 
 | 功能 | GPIO |
 | --- | ---: |
-| 声纹注册按键 | GPIO1 |
-| 红色 LED | GPIO3 |
-| 绿色 LED | GPIO2 |
-| 黄色 LED | GPIO7 |
-| SG90 PWM | GPIO6 |
-| ES8311 I2C SDA / SCL | GPIO17 / GPIO16 |
-| ES8311 I2S MCLK / BCLK / WS | GPIO20 / GPIO4 / GPIO5 |
-| ESP32 I2S TX -> ES8311 DIN | GPIO18 |
-| ES8311 DOUT -> ESP32 I2S RX | GPIO19 |
-| GC9A01 SCLK / MOSI | GPIO9 / GPIO10 |
-| GC9A01 DC / CS / RST | GPIO11 / GPIO12 / GPIO13 |
+| 声纹注册按键 | GPIO24 |
+| SG90 PWM | GPIO10 |
+| ES8311 I2C SDA / SCL | GPIO7 / GPIO6 |
+| ES8311 I2S MCLK / BCLK / WS | GPIO0 / GPIO4 / GPIO5 |
+| C5 I2S TX -> ES8311 DIN | GPIO2 |
+| ES8311 DOUT -> C5 I2S RX | GPIO3 |
+| 串口日志（CH340） | GPIO11 / GPIO12 |
+| 显示屏 / LED | 暂未分配 |
 
-ES8311、按键和其他外设必须共地。舵机应使用满足电流要求的独立电源，并与主控共地。
+ES8311、按键和其他外设必须共地。SG90 信号线接 GPIO10；红线接独立稳压 5 V，
+黑/棕线接外部电源 GND，且外部电源 GND 必须与 C5 GND 共地。不要使用 C5 的
+3.3 V 给舵机供电。
 
 ## 项目配置
 
@@ -128,7 +128,6 @@ Voiceprint authentication configuration
 - KWS WebSocket 地址、设备 ID、产品 ID 和可选鉴权 token。
 - 声纹 HTTP 服务地址、`speaker_id` 和显示名称。
 - WebSocket 重连间隔。
-- 可选的原始立体声诊断。
 
 不要提交包含个人网络凭据的 `sdkconfig`。
 
@@ -151,6 +150,7 @@ idf.py -p <PORT> monitor
 
 ## 待完成
 
+- 根据机械限位校准 SG90 开盒角度、脉宽和目标角度。
 - 增加闭盒业务动作和触发方式。
 - 接入 GC9A01 和 LED 的监听、验证、成功及失败状态。
 - 增加本地用户管理和声纹删除流程。

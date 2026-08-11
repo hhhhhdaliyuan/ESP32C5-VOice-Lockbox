@@ -28,7 +28,10 @@
 #define BOARD_ES8311_I2S_DOUT_GPIO     GPIO_NUM_2
 #define BOARD_ES8311_I2S_DIN_GPIO      GPIO_NUM_3
 
-/* Phase 1 does not initialize the display, LEDs, actuator, or panel controls. */
+/*
+ * Phase 2 enables only the lid actuator. Display, LEDs, and panel controls
+ * remain unassigned until their C5 wiring is reviewed and connected.
+ */
 #define BOARD_GC9A01_SPI_HOST          SPI2_HOST
 #define BOARD_GC9A01_SPI_SCLK_GPIO     GPIO_NUM_NC
 #define BOARD_GC9A01_SPI_MOSI_GPIO     GPIO_NUM_NC
@@ -41,7 +44,7 @@
 #define BOARD_LED_GREEN_GPIO           GPIO_NUM_NC
 #define BOARD_LED_YELLOW_GPIO          GPIO_NUM_NC
 
-#define BOARD_SG90_PWM_GPIO            GPIO_NUM_NC
+#define BOARD_SG90_PWM_GPIO            GPIO_NUM_10
 
 /*
  * Local voiceprint registration input.
