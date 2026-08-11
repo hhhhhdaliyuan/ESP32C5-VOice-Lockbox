@@ -88,7 +88,7 @@ esp_err_t common_spi_device_add(spi_host_device_t host, const common_spi_device_
  *
  * @param device 由 common_spi_device_add() 成功初始化的设备。
  * @param data 非空待发送数据指针。
- * @param len 发送长度，范围为 1..device->max_transfer_bytes 字节。
+ * @param len 发送长度；超过硬件单次传输上限时会自动分片发送。
  * @return ESP_OK 成功；ESP_ERR_INVALID_ARG 表示参数无效；ESP_ERR_INVALID_SIZE
  *         表示长度超过设备上限；ESP_ERR_INVALID_STATE 表示设备未初始化；其他值为
  *         ESP-IDF SPI 驱动错误码。
