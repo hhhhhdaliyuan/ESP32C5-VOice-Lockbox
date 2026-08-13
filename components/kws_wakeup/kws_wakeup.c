@@ -1305,3 +1305,8 @@ bool kws_wakeup_is_listening(void)
     return s_state_bits
            && (xEventGroupGetBits(s_state_bits) & KWS_WS_STREAMING_BIT) != 0;
 }
+
+void kws_wakeup_refresh_voiceprint_enrollment(void)
+{
+    s_voiceprint_enrolled = voiceprint_auth_is_enrolled();
+}

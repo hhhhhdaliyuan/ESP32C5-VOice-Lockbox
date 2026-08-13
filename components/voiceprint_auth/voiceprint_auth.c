@@ -14,6 +14,8 @@ static const char *TAG = "voiceprint_auth";
 
 #define VOICEPRINT_ENROLL_PATH          "/v1/voiceprint/enroll"
 #define VOICEPRINT_VERIFY_PATH          "/v1/voiceprint/verify"
+#define VOICEPRINT_SPEAKERS_PATH        "/v1/voiceprint/speakers"
+#define VOICEPRINT_URL_MAX_BYTES        384
 #define VOICEPRINT_RESPONSE_BUFFER_SIZE 4096
 #define VOICEPRINT_NVS_NAMESPACE        "voiceprint"
 #define VOICEPRINT_NVS_ENROLLED_KEY     "enrolled"
@@ -132,6 +134,49 @@ static esp_err_t voiceprint_http_post(const char *url, const uint8_t *pcm,
     return ESP_OK;
 }
 
+static esp_err_t voiceprint_http_request(const char *url,
+                                         esp_http_client_method_t method,
+                                         voiceprint_http_response_t *response)
+{
+    if (!url || !response) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    memset(response, 0, sizeof(*response));
+    esp_http_client_config_t config = {
+        .url = url,
+        .event_handler = voiceprint_http_event_handler,
+        .user_data = response,
+        .timeout_ms = CONFIG_VOICEPRINT_HTTP_TIMEOUT_MS,
+        .buffer_size = VOICEPRINT_RESPONSE_BUFFER_SIZE,
+    };
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    if (!client) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    esp_http_client_set_method(client, method);
+    esp_err_t ret = esp_http_client_perform(client);
+    int status = esp_http_client_get_status_code(client);
+    esp_http_client_cleanup(client);
+
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "HTTP request failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    if (response->overflow) {
+        ESP_LOGE(TAG, "HTTP response exceeds %u bytes",
+                 (unsigned)sizeof(response->data));
+        return ESP_ERR_INVALID_SIZE;
+    }
+    if (status < 200 || status >= 300) {
+        ESP_LOGE(TAG, "HTTP status=%d body=%s", status,
+                 response->length ? response->data : "(empty)");
+        return ESP_FAIL;
+    }
+    return response->length > 0 ? ESP_OK : ESP_ERR_INVALID_RESPONSE;
+}
+
 esp_err_t voiceprint_auth_init(void)
 {
     if (s_initialized) {
@@ -194,6 +239,140 @@ esp_err_t voiceprint_auth_set_enrolled(bool enrolled)
         s_enrolled = enrolled;
     }
     return ret;
+}
+
+esp_err_t voiceprint_auth_list_speakers(voiceprint_speaker_t *speakers,
+                                        size_t capacity, size_t *count)
+{
+    if (!s_initialized || !speakers || capacity == 0 || !count) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    *count = 0;
+
+    char url[VOICEPRINT_URL_MAX_BYTES];
+    int written = snprintf(url, sizeof(url), "%s%s",
+                           CONFIG_VOICEPRINT_SERVER_URL,
+                           VOICEPRINT_SPEAKERS_PATH);
+    if (written < 0 || (size_t)written >= sizeof(url)) {
+        return ESP_ERR_INVALID_SIZE;
+    }
+
+    voiceprint_http_response_t *response = malloc(sizeof(*response));
+    if (!response) {
+        return ESP_ERR_NO_MEM;
+    }
+    esp_err_t ret = voiceprint_http_request(url, HTTP_METHOD_GET, response);
+    if (ret != ESP_OK) {
+        free(response);
+        return ret;
+    }
+
+    cJSON *root = cJSON_Parse(response->data);
+    free(response);
+    if (!root) {
+        return ESP_ERR_INVALID_RESPONSE;
+    }
+    const cJSON *ok = cJSON_GetObjectItemCaseSensitive(root, "ok");
+    const cJSON *items = cJSON_GetObjectItemCaseSensitive(root, "speakers");
+    if (!cJSON_IsTrue(ok) || !cJSON_IsArray(items)) {
+        cJSON_Delete(root);
+        return ESP_ERR_INVALID_RESPONSE;
+    }
+
+    size_t copied = 0;
+    const cJSON *item;
+    cJSON_ArrayForEach(item, items) {
+        const cJSON *speaker_id = cJSON_GetObjectItemCaseSensitive(
+            item, "speaker_id");
+        if (copied >= capacity || !cJSON_IsString(speaker_id)
+            || !speaker_id->valuestring) {
+            if (copied >= capacity) {
+                break;
+            }
+            continue;
+        }
+
+        voiceprint_speaker_t *speaker = &speakers[copied];
+        memset(speaker, 0, sizeof(*speaker));
+        strlcpy(speaker->speaker_id, speaker_id->valuestring,
+                sizeof(speaker->speaker_id));
+
+        const cJSON *display_name = cJSON_GetObjectItemCaseSensitive(
+            item, "display_name");
+        if (cJSON_IsString(display_name) && display_name->valuestring) {
+            strlcpy(speaker->display_name, display_name->valuestring,
+                    sizeof(speaker->display_name));
+        }
+        const cJSON *created_at = cJSON_GetObjectItemCaseSensitive(
+            item, "created_at");
+        if (cJSON_IsString(created_at) && created_at->valuestring) {
+            strlcpy(speaker->created_at, created_at->valuestring,
+                    sizeof(speaker->created_at));
+        }
+        const cJSON *enrollment_count = cJSON_GetObjectItemCaseSensitive(
+            item, "enrollment_count");
+        if (cJSON_IsNumber(enrollment_count)
+            && enrollment_count->valuedouble >= 0
+            && enrollment_count->valuedouble <= UINT8_MAX) {
+            speaker->enrollment_count = (uint8_t)enrollment_count->valuedouble;
+        }
+        copied++;
+    }
+    cJSON_Delete(root);
+    *count = copied;
+    return ESP_OK;
+}
+
+esp_err_t voiceprint_auth_delete_speaker(const char *speaker_id)
+{
+    if (!s_initialized || !speaker_id || speaker_id[0] == '\0') {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    char encoded_speaker_id[VOICEPRINT_AUTH_SPEAKER_ID_MAX_BYTES * 3];
+    if (!voiceprint_url_encode(encoded_speaker_id, sizeof(encoded_speaker_id),
+                               speaker_id)) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    char url[VOICEPRINT_URL_MAX_BYTES];
+    int written = snprintf(url, sizeof(url), "%s%s/%s",
+                           CONFIG_VOICEPRINT_SERVER_URL,
+                           VOICEPRINT_SPEAKERS_PATH, encoded_speaker_id);
+    if (written < 0 || (size_t)written >= sizeof(url)) {
+        return ESP_ERR_INVALID_SIZE;
+    }
+
+    voiceprint_http_response_t *response = malloc(sizeof(*response));
+    if (!response) {
+        return ESP_ERR_NO_MEM;
+    }
+    esp_err_t ret = voiceprint_http_request(url, HTTP_METHOD_DELETE, response);
+    if (ret != ESP_OK) {
+        free(response);
+        return ret;
+    }
+    cJSON *root = cJSON_Parse(response->data);
+    free(response);
+    if (!root) {
+        return ESP_ERR_INVALID_RESPONSE;
+    }
+    const cJSON *ok = cJSON_GetObjectItemCaseSensitive(root, "ok");
+    bool deleted = cJSON_IsTrue(ok);
+    cJSON_Delete(root);
+    if (!deleted) {
+        return ESP_ERR_INVALID_RESPONSE;
+    }
+
+    if (strcmp(speaker_id, CONFIG_VOICEPRINT_SPEAKER_ID) == 0) {
+        ret = voiceprint_auth_set_enrolled(false);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "deleted remotely but could not clear local enrollment: %s",
+                     esp_err_to_name(ret));
+            return ret;
+        }
+    }
+    ESP_LOGI(TAG, "voiceprint deleted: speaker=%s", speaker_id);
+    return ESP_OK;
 }
 
 esp_err_t voiceprint_auth_enroll(const uint8_t *pcm, size_t pcm_len,

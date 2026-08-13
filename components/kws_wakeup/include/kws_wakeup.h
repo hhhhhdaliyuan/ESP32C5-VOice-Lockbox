@@ -54,6 +54,11 @@ esp_err_t kws_wakeup_get_event(kws_wakeup_event_t *event, uint32_t timeout_ms);
  */
 bool kws_wakeup_is_listening(void);
 
+/**
+ * @brief Reload the local voiceprint enrollment marker after administration.
+ */
+void kws_wakeup_refresh_voiceprint_enrollment(void);
+
 #ifdef __cplusplus
 }
 #endif

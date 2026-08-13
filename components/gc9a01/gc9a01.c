@@ -384,6 +384,34 @@ static esp_err_t gc9a01_draw_string_unlocked(uint8_t line, uint8_t column, const
     return ESP_OK;
 }
 
+static esp_err_t gc9a01_draw_glyph16_unlocked(uint16_t x, uint16_t y,
+                                               const uint8_t glyph[32],
+                                               uint16_t fg, uint16_t bg)
+{
+    static uint8_t pixels[16U * 16U * 2U];
+
+    if (!glyph || x > GC9A01_WIDTH - 16U || y > GC9A01_HEIGHT - 16U) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    for (uint8_t row = 0; row < 16U; row++) {
+        uint16_t bits = ((uint16_t)glyph[row * 2U] << 8)
+                        | glyph[row * 2U + 1U];
+        for (uint8_t column = 0; column < 16U; column++) {
+            uint16_t color = (bits & (0x8000U >> column)) ? fg : bg;
+            size_t offset = ((size_t)row * 16U + column) * 2U;
+            pixels[offset] = (uint8_t)(color >> 8);
+            pixels[offset + 1U] = (uint8_t)color;
+        }
+    }
+
+    esp_err_t ret = gc9a01_set_window_unlocked(x, y, x + 15U, y + 15U);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+    return gc9a01_write_data(pixels, sizeof(pixels));
+}
+
 static esp_err_t gc9a01_show_num_unlocked(uint8_t line, uint8_t column, uint32_t num, uint8_t len,
                                            uint16_t fg, uint16_t bg)
 {
@@ -555,6 +583,19 @@ esp_err_t gc9a01_draw_string(uint8_t line, uint8_t column, const char *text, uin
         return ret;
     }
     ret = gc9a01_draw_string_unlocked(line, column, text, fg, bg);
+    gc9a01_api_unlock();
+    return ret;
+}
+
+esp_err_t gc9a01_draw_glyph16(uint16_t x, uint16_t y,
+                               const uint8_t glyph[32], uint16_t fg,
+                               uint16_t bg)
+{
+    esp_err_t ret = gc9a01_api_lock();
+    if (ret != ESP_OK) {
+        return ret;
+    }
+    ret = gc9a01_draw_glyph16_unlocked(x, y, glyph, fg, bg);
     gc9a01_api_unlock();
     return ret;
 }
