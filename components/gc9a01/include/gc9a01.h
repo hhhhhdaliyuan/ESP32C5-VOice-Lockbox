@@ -184,6 +184,16 @@ esp_err_t gc9a01_draw_char(uint8_t line, uint8_t column, char c, uint16_t fg, ui
 esp_err_t gc9a01_draw_string(uint8_t line, uint8_t column, const char *text, uint16_t fg, uint16_t bg);
 
 /**
+ * @brief Draw a 16x16 monochrome glyph at a pixel coordinate.
+ *
+ * The glyph is 32 bytes, row-major, with the most-significant bit at the
+ * left edge of each 16-pixel row.
+ */
+esp_err_t gc9a01_draw_glyph16(uint16_t x, uint16_t y,
+                               const uint8_t glyph[32], uint16_t fg,
+                               uint16_t bg);
+
+/**
  * @brief 以十进制定宽、前导零形式显示无符号整数。
  *
  * 例如 num=42、len=4 时显示 "0042"。

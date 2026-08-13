@@ -14,6 +14,7 @@ disconnected and use `GPIO_NUM_NC`.
 | --- | ---: | --- |
 | Lid close button | GPIO1 | Button connects GPIO1 to GND; internal pull-up |
 | Voiceprint record/enroll button | GPIO24 | Button connects GPIO24 to GND; internal pull-up |
+| Voiceprint delete button | GPIO25 | Button connects GPIO25 to GND; internal pull-up |
 | ES8311 I2C SDA / SCL | GPIO7 / GPIO6 | Validated on this board |
 | ES8311 I2S MCLK / BCLK / WS | GPIO0 / GPIO4 / GPIO5 | GPIO0 has been validated as MCLK |
 | C5 I2S TX -> ES8311 DIN | GPIO2 | Do not add external pull circuits |
@@ -49,6 +50,21 @@ C5 must share GND. The controller keeps the lid closed at boot and calls
 The firmware uses the internal pull-up, so the button is active when pressed
 (GPIO1 reads low). The close command is ignored unless the current servo state
 is `OPENED`; voiceprint enrollment continues to use its separate GPIO24 button.
+
+## Voiceprint delete button wiring
+
+| Button side | Connect to |
+| --- | --- |
+| One side | C5 GPIO25 |
+| Other side | C5 GND |
+
+The delete button is active when pressed (GPIO25 reads low). From the normal
+screen, press it once to load the registered speaker list. In the list, short
+press moves the cursor. Long-press a registered speaker to enter confirmation,
+or select `EXIT MENU` and long-press to return to the normal screen. In
+confirmation, short press switches between the Chinese `Confirm` and `Cancel`
+choices; long press performs the selected action. The device never sends a
+delete request until `Confirm` is selected and long-pressed.
 
 ## GC9A01 wiring
 
