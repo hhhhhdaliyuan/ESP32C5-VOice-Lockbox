@@ -6,6 +6,7 @@ idf_component_register(SRCS "chest_controller.c"
                                 display_status
                                 freertos
                                 kws_wakeup
+                                led_control
                                 log
                                 servo
                                 voiceprint_auth

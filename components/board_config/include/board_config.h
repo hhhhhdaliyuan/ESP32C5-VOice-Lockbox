@@ -42,9 +42,9 @@
 #define BOARD_GC9A01_SPI_CS_GPIO       GPIO_NUM_14
 #define BOARD_GC9A01_RST_GPIO          GPIO_NUM_23
 
-#define BOARD_LED_RED_GPIO             GPIO_NUM_NC
-#define BOARD_LED_GREEN_GPIO           GPIO_NUM_NC
-#define BOARD_LED_YELLOW_GPIO          GPIO_NUM_NC
+#define BOARD_LED_RED_GPIO             GPIO_NUM_26
+#define BOARD_LED_GREEN_GPIO           GPIO_NUM_27
+#define BOARD_LED_BLUE_GPIO            GPIO_NUM_28
 
 #define BOARD_SG90_PWM_GPIO            GPIO_NUM_10
 
