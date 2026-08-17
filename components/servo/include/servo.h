@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file servo.h
  * @brief SG90 舵机驱动 — 支持慢速开盒/闭盒
  *
@@ -46,7 +46,7 @@ esp_err_t servo_init(int gpio_pin, int min_pulse_us, int max_pulse_us);
  *
  * @param angle  目标角度，范围 0~180°
  */
-void servo_set_angle(int angle);
+esp_err_t servo_set_angle(int angle);
 
 /**
  * @brief 慢速开盒 — 从当前角度旋转到 150°
@@ -56,7 +56,7 @@ void servo_set_angle(int angle);
  *
  * @param step_delay_ms  每度步进延迟（毫秒），必须 > 0
  */
-void servo_open(int step_delay_ms);
+esp_err_t servo_open(int step_delay_ms);
 
 /**
  * @brief 慢速闭盒 — 从当前角度旋转到 0°
@@ -65,7 +65,7 @@ void servo_open(int step_delay_ms);
  *
  * @param step_delay_ms  每度步进延迟（毫秒），必须 > 0
  */
-void servo_close(int step_delay_ms);
+esp_err_t servo_close(int step_delay_ms);
 
 /**
  * @brief 获取当前舵机状态

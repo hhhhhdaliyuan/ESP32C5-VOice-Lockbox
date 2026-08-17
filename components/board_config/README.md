@@ -7,14 +7,17 @@ GPIO assignments. This branch targets an ESP32-C5-WROOM-1 MCN16R8 board.
 
 The C5 voice path validates ES8311 capture, Wi-Fi, KWS, voiceprint
 registration, and voiceprint verification. The SG90 control signal and GC9A01
-status display are assigned. LEDs and optional panel controls remain
-disconnected and use `GPIO_NUM_NC`.
+status display and RGB lid-motion effects are assigned. Optional panel controls
+remain disconnected and use `GPIO_NUM_NC`.
 
 | Function | C5 GPIO | Notes |
 | --- | ---: | --- |
 | Lid close button | GPIO1 | Button connects GPIO1 to GND; internal pull-up |
 | Voiceprint record/enroll button | GPIO24 | Button connects GPIO24 to GND; internal pull-up |
 | Voiceprint delete button | GPIO25 | Button connects GPIO25 to GND; internal pull-up |
+| RGB LED red | GPIO26 | Active-low output; see RGB LED wiring |
+| RGB LED green | GPIO27 | Active-low output; see RGB LED wiring |
+| RGB LED blue | GPIO28 | Active-low output; see RGB LED wiring |
 | ES8311 I2C SDA / SCL | GPIO7 / GPIO6 | Validated on this board |
 | ES8311 I2S MCLK / BCLK / WS | GPIO0 / GPIO4 / GPIO5 | GPIO0 has been validated as MCLK |
 | C5 I2S TX -> ES8311 DIN | GPIO2 | Do not add external pull circuits |
@@ -66,6 +69,24 @@ confirmation, short press switches between the Chinese `Confirm` and `Cancel`
 choices; long press performs the selected action. The device never sends a
 delete request until `Confirm` is selected and long-pressed.
 
+## RGB LED wiring
+
+Use three separate LEDs with three separate resistors. The outputs are
+active-low so their reset level stays high:
+
+| LED | C5 GPIO | Connection |
+| --- | ---: | --- |
+| Red | GPIO26 | `3V3 -> resistor -> LED anode`, LED cathode -> GPIO26 |
+| Green | GPIO27 | `3V3 -> resistor -> LED anode`, LED cathode -> GPIO27 |
+| Blue | GPIO28 | `3V3 -> resistor -> LED anode`, LED cathode -> GPIO28 |
+
+Use a suitable current-limiting resistor for each LED; 1 kohm is a conservative
+starting value at 3.3 V. Do not connect the LED cathodes directly to GND. GPIO27
+and GPIO28 are boot-strapping pins and the active-low connection lets them stay
+high while the chip resets. The firmware runs red-green-blue in sequence while
+opening, blue-green-red while closing, and fast red blinking if an opening PWM
+command fails. A mechanical jam cannot be detected without a lid-position or
+motor-current sensor.
 ## GC9A01 wiring
 
 | GC9A01 label | Connect to |
@@ -92,7 +113,6 @@ then returns to `CLOSED`.
 
 ## Later peripherals
 
-The display, LEDs, and optional buttons must receive a separate C5 pin-budget
-review before assignment. Do not use GPIO11/GPIO12 during porting, and do not
-assign the C5 strapping pins GPIO25 through GPIO28 until reset behavior has
-been tested with the final circuit.
+Do not use GPIO11/GPIO12 during porting. GPIO25 through GPIO28 are C5
+strapping pins: the GPIO25 delete button and active-low RGB LED circuit must
+keep the final board booting reliably before adding any other loads to them.

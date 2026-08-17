@@ -11,6 +11,7 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include "kws_wakeup.h"
+#include "led_control.h"
 #include "sdkconfig.h"
 #include "voiceprint_auth.h"
 #include "voiceprint_delete_ui.h"
@@ -131,7 +132,17 @@ static void chest_controller_open_lid(const kws_wakeup_event_t *event)
 
 #if CONFIG_CHEST_ENABLE_SERVO
     ESP_LOGI(TAG, "opening lid for verified keyword: %s", event->keyword);
-    servo_open(CHEST_SERVO_OPEN_STEP_DELAY_MS);
+    led_control_set_pattern(LED_PATTERN_OPENING);
+    esp_err_t ret = servo_open(CHEST_SERVO_OPEN_STEP_DELAY_MS);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "lid opening failed: %s", esp_err_to_name(ret));
+        led_control_set_pattern(LED_PATTERN_OPEN_FAILED);
+#if CONFIG_CHEST_ENABLE_DISPLAY
+        display_status_show_error("OPEN FAIL");
+#endif
+        return;
+    }
+    led_control_set_pattern(LED_PATTERN_OFF);
 #else
     ESP_LOGI(TAG, "verified keyword: %s (actuator disabled)", event->keyword);
 #endif
@@ -154,14 +165,23 @@ static void chest_controller_close_lid(void)
 #endif
 
     ESP_LOGI(TAG, "closing lid from local button");
-    servo_close(CHEST_SERVO_CLOSE_STEP_DELAY_MS);
+    led_control_set_pattern(LED_PATTERN_CLOSING);
+    esp_err_t ret = servo_close(CHEST_SERVO_CLOSE_STEP_DELAY_MS);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "lid closing failed: %s", esp_err_to_name(ret));
+        led_control_set_pattern(LED_PATTERN_OFF);
+#if CONFIG_CHEST_ENABLE_DISPLAY
+        display_status_show_error("CLOSE FAIL");
+#endif
+        return;
+    }
+    led_control_set_pattern(LED_PATTERN_OFF);
 
 #if CONFIG_CHEST_ENABLE_DISPLAY
     display_status_show_closed();
 #endif
 }
 #endif
-
 static bool chest_controller_delete_ui_active(void)
 {
     return s_delete_ui_state != CHEST_DELETE_UI_NORMAL;
@@ -532,6 +552,10 @@ esp_err_t chest_controller_start(void)
         return ret;
     }
 
+    ret = led_control_init();
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "RGB LED unavailable: %s", esp_err_to_name(ret));
+    }
     ret = kws_wakeup_start();
     if (ret != ESP_OK) {
 #if CONFIG_CHEST_ENABLE_DISPLAY
